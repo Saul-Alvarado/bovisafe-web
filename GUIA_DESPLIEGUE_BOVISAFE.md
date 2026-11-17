@@ -4,8 +4,8 @@ Preparada el 17 de noviembre de 2026. Este documento no crea servicios, no activ
 
 ## 0. Condiciones previas
 
-- Resolver SEGURIDAD_ROTACION.md del backend. La contraseña PostgreSQL histórica sigue aceptándose localmente y SMTP no tiene revocación comprobada. No conectar Render a la rama main contaminada.
-- Publicar el snapshot limpio como master solo después de confirmar la rotación. Revisar el hash remoto y mantener auto-deploy desactivado.
+- Resolver SEGURIDAD_ROTACION.md del backend. La contraseña PostgreSQL histórica sigue aceptándose localmente y SMTP no tiene revocación comprobada. Confirmar que la main remota apunta al historial limpio antes de conectar Render.
+- La rama de producción de los tres repositorios es main. Antes del despliegue, verificar los hashes remotos, confirmar la rotación y mantener desactivados los despliegues automáticos.
 - Elegir cuentas y regiones compatibles. Confirmar las condiciones y límites vigentes antes de aceptar una activación que pueda generar gastos.
 - Ejecutar pruebas locales. Cámara, galería, modo avión y recepción GPS requieren además recorrido manual en el teléfono; las pruebas de controles opcionales no verifican la precisión GPS.
 
@@ -50,11 +50,12 @@ Alternativa a evaluar: Cloudflare R2 Standard, compatible con S3; confirmar sus 
 3. Variables: `S3_BUCKET`, `S3_REGION`, `S3_ENDPOINT`, `S3_PATH_STYLE`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`. En R2 usar la región `auto` y el endpoint HTTPS S3 que entregue la cuenta; comprobar path-style según proveedor. En AWS S3 usar la región real y dejar endpoint vacío para el endpoint AWS estándar. El valor predeterminado de render.yaml no sustituye la región elegida.
 4. No se necesita CORS público del bucket: React y Android descargan por la API autenticada. El backend comprueba propietario o asignación veterinaria antes de leer el objeto.
 5. Si se migran fotografías existentes, conservar claves como `cattle/<id>/<uuid>.<ext>`, verificar SHA-256 y conservar los originales hasta terminar. No copiarlas al repositorio.
-6. Probar: subir desde Android, consultar foto con usuario autorizado, comprobar 401/404 para accesos indebidos, reiniciar/republicar Render y recuperar de nuevo la foto. Confirmar que el objeto no sea accesible mediante URL pública. Estas pruebas remotas están pendientes.
+6. Para respaldar fotografías locales, detener temporalmente las cargas y copiar el directorio indicado por BOVISAFE_UPLOAD_DIR. Por defecto es uploads bajo el directorio de arranque del backend. Guardar la copia en almacenamiento local privado junto al respaldo de la base, preservar rutas relativas y comprobar tamaños y SHA-256 antes de reanudar las cargas. El dump incluye las referencias de imagen y sus relaciones. Los archivos se copian por separado.
+7. Probar: subir desde Android, consultar foto con usuario autorizado, comprobar 401/404 para accesos indebidos, reiniciar/republicar Render y recuperar de nuevo la foto. Confirmar que el objeto no sea accesible mediante URL pública. Estas pruebas remotas están pendientes.
 
 ## 3. Render: Spring Boot
 
-1. Importar BoviSafe-back, seleccionando la futura rama master limpia. Elegir Web Service con Docker, Dockerfile en la raíz. No importar main histórica ni activar despliegues automáticos. `render.yaml` mantiene `autoDeployTrigger: off`.
+1. Importar BoviSafe-back, seleccionando la rama main limpia y verificada. Elegir Web Service con Docker, Dockerfile en la raíz. Mantener desactivados los despliegues automáticos. `render.yaml` mantiene `autoDeployTrigger: off`.
 2. El Dockerfile compila con Java 17 y ejecuta como usuario sin privilegios. La construcción Docker omite pruebas porque necesitan PostgreSQL local; la publicación exige haber ejecutado previamente `mvnw.cmd clean package` con las pruebas locales. Docker no se ejecutó en este entorno.
 3. Configurar secretos desde el panel de Render:
 
@@ -72,12 +73,12 @@ Alternativa a evaluar: Cloudflare R2 Standard, compatible con S3; confirmar sus 
 4. Render suministra PORT; Spring escucha en `0.0.0.0:${PORT}`. Configurar health check `/api/health`, que no muestra credenciales. No fijar un puerto distinto en el código.
 5. Ejecutar el despliegue manual solamente cuando se autorice. Anotar la URL HTTPS real asignada; no se ha creado ninguna URL Render para este proyecto.
 6. Verificar logs sin credenciales, ausencia de errores de esquema/TLS/S3 y health check. `prod` desactiva SQL y trazas de error públicas. Si falta una tabla, aplicar la migración pendiente de forma controlada; no reinicializar la base.
-7. Autenticación actual: tokens opacos aleatorios, hash SHA-256 en PostgreSQL, caducidad de doce horas. **No es JWT** y no requiere inventar JWT_SECRET. Comprobar login, expiración, permisos y persistencia de sesiones tras reinicio.
+7. Autenticación actual: tokens opacos aleatorios, hash SHA-256 en PostgreSQL, caducidad de doce horas. La configuración de producción conserva ese esquema de sesiones. Comprobar login, expiración, permisos y persistencia de sesiones tras reinicio.
 8. Probar preflight y solicitudes reales desde el origen Vercel exacto. Agregar un origen Preview solo si se necesita y se autoriza. No utilizar `*` con datos privados.
 
 ## 4. Vercel: React + Vite
 
-1. Importar bovisafe-web en la rama master verificada, framework Vite. Instalación `npm ci`, build `npm run build`, salida `dist` y raíz del repositorio.
+1. Importar bovisafe-web con main como rama de producción, framework Vite. Instalación `npm ci`, build `npm run build`, salida `dist` y raíz del repositorio.
 2. Configurar `BOVISAFE_API_URL=<URL-HTTPS-real-Render>/api`. La función `api/config.js` entrega esa URL mediante `/runtime-config`, con no-store y sin secretos. `VITE_API_URL` solo es alternativa de compilación.
 3. `vercel.json` configura `/runtime-config` y fallback SPA, manteniendo recursos `/api`, `/assets` y `/geo`. Los despliegues Git automáticos están desactivados; un despliegue manual posterior requiere autorización. GitHub Pages ya no publica la antigua demostración.
 4. Cambiar de backend actualizando la variable en Vercel y aplicando la configuración a un despliegue manual; no editar React. Actualizar el CORS de Render con el origen Vercel real.
