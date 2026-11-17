@@ -6,17 +6,24 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
-    "preview": "vite preview --host 0.0.0.0"
+    "preview": "vite preview --host 0.0.0.0",
+    "test": "playwright test",
+    "test:config": "node --test tests/runtime-config.test.js"
   },
   "dependencies": {
+    "@turf/boolean-point-in-polygon": "^7.4.0",
+    "@turf/union": "^7.4.0",
     "leaflet": "^1.9.4",
+    "leaflet.markercluster": "^1.5.3",
     "lucide-react": "^0.468.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-leaflet": "^5.0.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.1",
     "@vitejs/plugin-react": "^5.0.0",
+    "mapshaper": "^0.8.4",
     "vite": "^7.1.0"
   }
 }

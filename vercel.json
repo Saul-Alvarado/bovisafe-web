@@ -1,0 +1,25 @@
+{
+  "framework": "vite",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "rewrites": [
+    {
+      "source": "/runtime-config",
+      "destination": "/api/config"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/runtime-config",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store"
+        }
+      ]
+    }
+  ],
+  "git": {
+    "deploymentEnabled": false
+  }
+}

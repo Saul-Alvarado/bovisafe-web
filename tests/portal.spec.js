@@ -1,0 +1,50 @@
+import { test, expect } from '@playwright/test'
+import { snapshot } from './fixtures/observatory.js'
+const evaluation={id:10,cattleId:2,identifier:'BOV-TEST',ranchName:'Rancho de prueba',createdAt:'2026-11-01T12:00:00',region:'SKIN',result:'NWS',risk:'ALTO',confidence:.9,recommendation:'Orientación general: solicitar revisión veterinaria. No es diagnóstico.',requiresFollowUp:true,status:'ACTIVE',analysisSource:'LOCAL_AI',modelVersion:'v1_experimental',rulesVersion:'recomendaciones_offline_v1',clinicalDiagnosis:'UNASSESSED',scores:{NWS:.9,HEALTHY:.02,LESION:.02,ENVIRONMENT:.02,POOR_QUALITY:.02,OCCLUSION:.02}}
+// UI contract fixtures supplement HTTP/PostgreSQL tests in the backend repository.
+test('authenticated history separates model output from clinical diagnosis and preserves follow-up',async({page})=>{
+  const failures=[];page.on('pageerror',e=>failures.push(e.message))
+  await page.route('**/api/**',async route=>{
+    const path=new URL(route.request().url()).pathname
+    if(path==='/api/auth/login')return route.fulfill({json:{farmerId:1,firstName:'Productor',token:'test-token'}})
+    if(path==='/api/observatory')return route.fulfill({json:snapshot()})
+    expect(route.request().headers().authorization).toBe('Bearer test-token')
+    if(path.startsWith('/api/observatory'))return route.fulfill({json:snapshot({authorized:path.endsWith('/authorized')})})
+    if(path==='/api/territory/ranches')return route.fulfill({json:{type:'FeatureCollection',features:[],unlocatedRanches:0,scope:'AUTHORIZED_ONLY'}})
+    if(path==='/api/evaluations')return route.fulfill({json:[evaluation]})
+    if(path==='/api/dashboard/resumen')return route.fulfill({json:{totalBovinos:1,totalEvaluaciones:1,enSeguimiento:1}})
+    if(path==='/api/dashboard/history')return route.fulfill({json:[{month:'2026-11',evaluations:1,animals:1,visualSuspicions:1,professionallyConfirmed:0}]})
+    if(path==='/api/clinical/evaluations'||path.endsWith('/reviews'))return route.fulfill({json:[]})
+    if(path.endsWith('/image'))return route.fulfill({contentType:'image/png',body:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aXZkAAAAASUVORK5CYII=','base64')})
+    if(path.endsWith('/follow-up')) {const data=route.request().postDataJSON();expect(data.observations).toBe('Vigilar evolución');return route.fulfill({json:{...evaluation,...data}})}
+    return route.fulfill({status:404,json:{message:'Unexpected request '+path}})
+  })
+  await page.goto('/')
+  await page.getByRole('button',{name:'Acceder a mis registros',exact:true}).click()
+  await expect(page.getByRole('heading',{name:'Acceso a tus registros'})).toBeVisible()
+  await page.getByLabel('Correo',{exact:true}).fill('owner@test.invalid')
+  await page.getByLabel('Contraseña',{exact:true}).fill('example-password')
+  await page.getByRole('button',{name:'Iniciar sesión',exact:true}).click()
+  await expect(page.getByRole('cell',{name:'BOV-TEST',exact:false})).toBeVisible()
+  await expect(page.getByRole('cell',{name:'Sin valoración profesional',exact:true})).toBeVisible()
+  await page.getByRole('button',{name:'Ver',exact:true}).click()
+  await expect(page.getByRole('heading',{name:'BOV-TEST · NWS'})).toBeVisible()
+  await expect(page.getByRole('button',{name:'Registrar valoración y cerrar seguimiento'})).toHaveCount(0)
+  await page.getByLabel('Observaciones',{exact:true}).fill('Vigilar evolución')
+  await page.getByRole('button',{name:'Guardar seguimiento',exact:true}).click()
+  await expect(page.getByRole('cell',{name:'Requiere atención',exact:true})).toBeVisible()
+  await page.getByRole('button',{name:'Cerrar sesión',exact:true}).click()
+  await expect(page.getByRole('heading',{name:'Acceso a tus registros'})).toBeVisible()
+  await expect(page.getByRole('cell',{name:'BOV-TEST',exact:false})).toHaveCount(0)
+  expect(failures).toEqual([])
+})
+test('unavailable server shows a visible error instead of invented data',async({page})=>{
+  await page.route('**/api/**',route=>route.fulfill({status:503,json:{message:'Servidor no disponible'}}))
+  await page.goto('/')
+  await page.getByRole('button',{name:'Acceder a mis registros',exact:true}).click()
+  await page.getByLabel('Correo',{exact:true}).fill('owner@test.invalid')
+  await page.getByLabel('Contraseña',{exact:true}).fill('example-password')
+  await page.getByRole('button',{name:'Iniciar sesión',exact:true}).click()
+  await expect(page.getByRole('alert')).toHaveText('Servidor no disponible')
+  await expect(page.getByRole('cell')).toHaveCount(0)
+})

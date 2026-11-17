@@ -1,8 +1,6 @@
-name: Publicar BoviSafe Web en GitHub Pages
+name: Publicación histórica manual (desactivada para publicación automática)
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -16,6 +14,7 @@ concurrency:
 
 jobs:
   deploy:
+    if: ${{ false }} # La publicación se realizará después en Vercel, con autorización.
     runs-on: ubuntu-latest
     environment:
       name: github-pages

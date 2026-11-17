@@ -1,0 +1,5 @@
+export function snapshot({authorized=false,count=0,features=[],unlocated=0}={}){
+ const summary={evaluations:count,animals:count?1:0,ranches:count?1:0,nws_predictions:count,suspected_cases:0,confirmed_cases:0,follow_up_cases:count?1:0,closed_cases:0}
+ return {summary,trend:[{...summary,month:'2026-11'}],categories:['NWS','HEALTHY','LESION','ENVIRONMENT','POOR_QUALITY','OCCLUSION'].map(category=>({category,count:category==='NWS'?count:0})),caseStates:count?[{status:'PENDING_REVIEW',count:1}]:[],municipalities:count?[{...summary,code:'12029',name:'Chilpancingo de los Bravo'}]:[],regions:count?[{...summary,code:'CENTRO'}]:[],map:{type:'FeatureCollection',features:authorized?features:[]},unlocatedRanches:unlocated,scope:authorized?'AUTHORIZED_ONLY':'PUBLIC_AGGREGATED',from:'2026-11-01',to:'2026-11-16',availableMonths:['2026-11'],generatedAt:'2026-11-16T12:00:00Z',operationalStart:'2026-11-01'}
+}
+export const point={type:'Feature',id:11,geometry:{type:'Point',coordinates:[-99.5,17.55]},properties:{ranch_id:11,ranch_name:'FIXTURE SOLO PRUEBA',evaluations:2,animals:1,nws_predictions:2,suspected_cases:0,confirmed_cases:0,follow_up_cases:1,closed_cases:0}}

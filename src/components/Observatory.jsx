@@ -1,0 +1,55 @@
+import { useEffect, useRef, useState } from 'react'
+import { getApiBase } from '../apiConfig.js'
+import OperationalMap from './OperationalMap.jsx'
+import '../styles/observatory.css'
+const START='2026-11-01'
+function today(){const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Mexico_City',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());return ['year','month','day'].map(k=>parts.find(p=>p.type===k).value).join('-')}
+function months(){const out=[];for(let y=2026,m=11;`${y}-${String(m).padStart(2,'0')}`<=today().slice(0,7);){out.push(`${y}-${String(m).padStart(2,'0')}`);if(++m>12){m=1;y++}}return out}
+const defaults=()=>({from:START,to:today(),month:'',region:'',municipality:'',category:'',followUp:''})
+const clinical={PENDING_REVIEW:'Pendiente de valoración',SUSPECTED:'Sospecha profesional',CONFIRMED:'Confirmado por profesional',DISCARDED:'Descartado por profesional',UNDETERMINED:'Valoración no concluyente',FOLLOW_UP:'En seguimiento',CLOSED:'Cerrado',NO_CASE:'Sin caso abierto'}
+export default function Observatory({token,onLogin,refreshKey=0}) {
+ const [filters,setFilters]=useState(defaults),[snapshot,setSnapshot]=useState(null),[geography,setGeography]=useState(null),[error,setError]=useState(''),[geoError,setGeoError]=useState(''),[busy,setBusy]=useState(true),[revision,setRevision]=useState(0)
+ const epoch=useRef(0),api=getApiBase()
+ useEffect(()=>{const c=new AbortController();fetch(`${import.meta.env.BASE_URL}geo/guerrero-catalog.json`,{signal:c.signal}).then(r=>{if(!r.ok)throw new Error('No se pudo cargar la cartografía oficial');return r.json()}).then(setGeography).catch(e=>{if(e.name!=='AbortError')setGeoError(e.message)});return()=>c.abort()},[revision])
+ useEffect(()=>{
+  const c=new AbortController(),id=++epoch.current;setBusy(true);setError('');setSnapshot(null)
+  const query=new URLSearchParams(Object.entries(filters).filter(([,value])=>value))
+  fetch(`${api}/observatory${token?'/authorized':''}?${query}`,{headers:token?{Authorization:`Bearer ${token}`}:{},signal:c.signal})
+   .then(async r=>{if(!r.ok){let msg;try{msg=(await r.json()).message}catch{}throw new Error(msg||`No se pudo consultar el observatorio (${r.status})`)}return r.json()})
+   .then(data=>{if(id===epoch.current)setSnapshot(data)}).catch(e=>{if(e.name!=='AbortError'&&id===epoch.current)setError(e.message)})
+   .finally(()=>{if(id===epoch.current)setBusy(false)})
+  return()=>c.abort()
+ },[api,token,filters,revision,refreshKey])
+ const update=(key,value)=>setFilters(f=>({...f,[key]:value,...(['from','to'].includes(key)?{month:''}:{}),...(key==='region'?{municipality:''}:{})}))
+ const selectCategory=value=>update('category',filters.category===value?'':value)
+ const summary=snapshot?.summary,maximum=Math.max(1,...(snapshot?.trend||[]).map(p=>Number(p.evaluations)))
+ const metricNames=[['evaluations','Evaluaciones realizadas'],['animals','Bovinos evaluados'],['nws_predictions','Predicciones compatibles con NWS'],['suspected_cases','Casos sospechosos'],['confirmed_cases','Diagnósticos confirmados'],['follow_up_cases','Casos en seguimiento'],['closed_cases','Casos cerrados'],['ranches','Ranchos evaluados']]
+ const Root=token?'section':'main'
+ return <Root className="observatory" aria-label={token?'Observatorio autorizado':'Observatorio público'}>
+  <header className="obs-header"><a className="obs-brand" href="#observatorio">Bovi<span>Safe</span><small>OBSERVATORIO DE GUERRERO</small></a><nav><a href="#territorio">Territorio</a><a href="#estadisticas">Estadísticas</a>{onLogin&&<button onClick={onLogin}>Acceder a mis registros</button>}</nav></header>
+  <section className="obs-intro" id="observatorio"><span>VIGILANCIA Y SEGUIMIENTO BOVINO</span><h1>Observar el territorio.<br/><em>Acompañar el cuidado.</em></h1><p>Información operativa registrada desde el 1 de noviembre de 2026. Predicciones del modelo, sospechas profesionales y diagnósticos se muestran por separado.</p><div className="obs-scope">{token?'Vista privada: solo ranchos de tu cuenta o con permiso veterinario.':'Vista pública: agregados municipales sin nombres ni coordenadas privadas.'}</div></section>
+  <section className="obs-filters" aria-label="Filtros del observatorio">
+   <div><label htmlFor="obs-from">Desde</label><input id="obs-from" type="date" min={START} max={today()} value={filters.from} onChange={e=>update('from',e.target.value)}/></div>
+   <div><label htmlFor="obs-to">Hasta</label><input id="obs-to" type="date" min={START} max={today()} value={filters.to} onChange={e=>update('to',e.target.value)}/></div>
+   <div><label htmlFor="obs-month">Mes</label><select id="obs-month" value={filters.month} onChange={e=>update('month',e.target.value)}><option value="">Todo el periodo</option>{(snapshot?.availableMonths||months()).map(m=><option key={m} value={m}>{m}</option>)}</select></div>
+   <div><label htmlFor="obs-region">Región declarada</label><select id="obs-region" value={filters.region} onChange={e=>update('region',e.target.value)}><option value="">Todas las regiones</option>{geography?.regions.map(r=><option key={r.code} value={r.code}>{r.name}</option>)}</select></div>
+   <div><label htmlFor="obs-municipality">Municipio</label><select id="obs-municipality" value={filters.municipality} onChange={e=>update('municipality',e.target.value)}><option value="">Todos los municipios</option>{geography?.municipalities.features.slice().sort((a,b)=>a.properties.name.localeCompare(b.properties.name,'es')).map(f=><option key={f.properties.code} value={f.properties.code}>{f.properties.name}</option>)}</select></div>
+   <div><label htmlFor="obs-category">Clasificación</label><select id="obs-category" value={filters.category} onChange={e=>update('category',e.target.value)}><option value="">Todas las categorías</option>{['NWS','HEALTHY','LESION','ENVIRONMENT','POOR_QUALITY','OCCLUSION'].map(c=><option key={c}>{c}</option>)}</select></div>
+   <div><label htmlFor="obs-follow-up">Estado del seguimiento</label><select id="obs-follow-up" value={filters.followUp} onChange={e=>update('followUp',e.target.value)}><option value="">Todos los estados</option>{Object.entries(clinical).map(([code,name])=><option key={code} value={code}>{name}</option>)}</select></div>
+   <button type="button" onClick={()=>setFilters(defaults())}>Restablecer filtros</button>
+  </section>
+  {(error||geoError)&&<div className="obs-error" role="alert"><strong>{error||geoError}</strong><p>No se muestran datos de demostración ni resultados anteriores para sustituir esta consulta.</p><button onClick={()=>{setGeoError('');setRevision(v=>v+1)}}>Reintentar consulta</button></div>}
+  <section className="obs-metrics" aria-label="Indicadores operativos" aria-busy={busy}>{metricNames.map(([key,name])=><article key={key}><span>{name}</span><strong data-metric={key}>{busy||!summary?'—':Number(summary[key]).toLocaleString('es-MX')}</strong></article>)}</section>
+  <section id="territorio" className="obs-section"><div className="obs-section-heading"><div><span>TERRITORIO</span><h2>Guerrero, registro por registro</h2></div><span>{busy?'Consultando…':snapshot?`${snapshot.from} a ${snapshot.to}`:'Consulta no disponible'}</span></div>
+   <OperationalMap geography={geography} snapshot={snapshot} busy={busy} authorized={!!token} selectedMunicipality={filters.municipality} onMunicipality={code=>update('municipality',filters.municipality===code?'':code)}/>
+   <details className="geo-source"><summary>Cartografía y criterios de visualización</summary><p>Límites estatales y 85 municipios: Marco Geoestadístico del INEGI, simplificado conservando topología. El catálogo de ocho regiones procede del programa oficial estatal. La región se declara en el registro del rancho; no se inventan límites regionales ni se atribuye un municipio completo a Sierra.</p><p>Colores: gris sin evaluaciones; verde tenue con registros; ámbar con NWS visual; naranja con sospecha profesional; rojo con confirmación profesional. Describen registros del periodo, no zonas de infestación ni prevalencia. Los casos se cuentan una sola vez; una fotografía HEALTHY no los cierra.</p></details>
+  </section>
+  <section id="estadisticas" className="obs-section"><div className="obs-section-heading"><div><span>ESTADÍSTICAS DEL MISMO PERIODO</span><h2>Información para dar seguimiento</h2></div><button onClick={()=>setRevision(v=>v+1)}>Actualizar consulta</button></div>
+   <div className="obs-charts"><article><h3>Evaluaciones por mes</h3><p>Selecciona una barra para consultar ese mes.</p><div className="monthly-bars">{snapshot?.trend.map(row=><button key={row.month} title={`${row.month}: ${row.evaluations} evaluaciones, ${row.animals} bovinos evaluados`} aria-label={`${row.month}: ${row.evaluations} evaluaciones`} onClick={()=>update('month',filters.month===row.month?'':row.month)}><strong>{row.evaluations}</strong><span className="bar-track"><i style={{height:`${100*Number(row.evaluations)/maximum}%`}}/></span><small>{row.month}</small></button>)}</div>{!snapshot&&<p>{busy?'Cargando…':'No disponible'}</p>}</article>
+   <article><h3>Clasificaciones del modelo</h3><p>Puntuaciones categóricas; no diagnósticos veterinarios.</p><div className="category-bars">{snapshot?.categories.map(row=><button key={row.category} className={filters.category===row.category?'chosen':''} onClick={()=>selectCategory(row.category)} title={`${row.category}: ${row.count} evaluaciones`}><span>{row.category}</span><i style={{width:`${summary?.evaluations?100*row.count/Number(summary.evaluations):0}%`}}/><strong>{row.count}</strong></button>)}</div></article>
+   <article><h3>Casos y seguimiento</h3><p>Casos únicos con evaluaciones del periodo; estado profesional actual.</p>{snapshot?.caseStates.length?snapshot.caseStates.map(row=><button className="case-chart-row" key={row.status} title={`${clinical[row.status]}: ${row.count} casos`} onClick={()=>update('followUp',filters.followUp===row.status?'':row.status)}><span>{clinical[row.status]||row.status}</span><strong>{row.count}</strong></button>):<p>{busy?'Cargando…':'No hay casos operativos para mostrar.'}</p>}</article>
+   <article><h3>Evaluaciones por municipio</h3><p>Selecciona un municipio para actualizar mapa y gráficas.</p>{snapshot?.municipalities.length?snapshot.municipalities.map(row=><button className="case-chart-row" key={row.code} disabled={row.code==='UNLOCATED'} title={`${row.evaluations} evaluaciones; ${row.confirmed_cases} casos confirmados`} onClick={()=>update('municipality',filters.municipality===row.code?'':row.code)}><span>{row.name}</span><strong>{row.evaluations}</strong></button>):<p>{busy?'Cargando…':'No hay evaluaciones operativas por municipio.'}</p>}</article></div>
+  </section>
+  <footer className="obs-footer"><strong>BoviSafe</strong><p>NWS indica compatibilidad visual y requiere valoración. HEALTHY no garantiza ausencia de enfermedad. Los registros de pruebas están excluidos de todas las consultas operativas.</p><small>Guerrero · Marco Geoestadístico INEGI · {snapshot?'Datos consultados: '+new Date(snapshot.generatedAt).toLocaleString('es-MX'):'Sin consulta operativa disponible'}</small></footer>
+ </Root>
+}

@@ -11,7 +11,15 @@ const base = process.env.GITHUB_ACTIONS === 'true' && repository && !isAccountSi
   : '/'
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), {
+    name: 'runtime-config',
+    configureServer(server) {
+      server.middlewares.use('/runtime-config', (_req, res) => {
+        res.setHeader('Content-Type', 'application/json'); res.setHeader('Cache-Control', 'no-store')
+        res.end(JSON.stringify({ apiUrl: process.env.BOVISAFE_API_URL || process.env.VITE_API_URL || '/api' }))
+      })
+    }
+  }],
   base,
-  server: { host: '0.0.0.0' }
+  server: { host: '0.0.0.0', proxy: { '/api': { target: process.env.BOVISAFE_PROXY_TARGET || 'http://127.0.0.1:8080', changeOrigin: true } } }
 })
