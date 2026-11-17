@@ -1,3 +1,4 @@
+import {resultLabel} from '../src/resultLabels.js'
 import { test, expect } from '@playwright/test'
 import fs from 'node:fs'
 const fixturePath=process.env.BOVISAFE_E2E_FIXTURE
@@ -19,13 +20,13 @@ test('live Android evaluation is queryable from React with its authenticated pho
   await expect(page.locator('[data-metric="evaluations"]')).toHaveText('0')
   await expect(page.locator('.operational-marker')).toHaveCount(0)
   await page.getByRole('button',{name:'Ver',exact:true}).click()
-  await expect(page.getByRole('heading',{name:`${fixture.identifier} · ${fixture.classification}`})).toBeVisible()
+  await expect(page.getByRole('heading',{name:`${fixture.identifier} · ${resultLabel(fixture.classification)}`})).toBeVisible()
   await expect(page.getByText('Modelo: v1_experimental. Puntuaciones del clasificador; no son probabilidades clínicas.')).toBeVisible()
   const photo=page.getByRole('img',{name:'Fotografía de la evaluación',exact:true})
   await expect(photo).toBeVisible()
   await expect.poll(()=>photo.evaluate(el=>el.complete && el.naturalWidth>0)).toBeTruthy()
   const observed=await page.locator('.portal-report dl dt').allTextContents()
-  expect(observed).toEqual(['NWS','HEALTHY','LESION','ENVIRONMENT','POOR_QUALITY','OCCLUSION'])
+  expect(observed).toEqual(['NWS','HEALTHY','LESION','ENVIRONMENT','POOR_QUALITY','OCCLUSION'].map(resultLabel))
   await expect(page.getByRole('button',{name:'Registrar valoración y cerrar seguimiento'})).toHaveCount(0)
   await page.getByLabel('Observaciones',{exact:true}).fill('VERIFICACION E2E: registro sintético, no representa un caso clínico real.')
   const update=page.waitForResponse(r=>r.url().endsWith(`/api/evaluations/${fixture.evaluationId}/follow-up`) && r.request().method()==='PUT')
@@ -36,3 +37,6 @@ test('live Android evaluation is queryable from React with its authenticated pho
   await expect(page.getByLabel('Observaciones',{exact:true})).toHaveValue('VERIFICACION E2E: registro sintético, no representa un caso clínico real.')
   expect(errors).toEqual([])
 })
+
+// Isolated image fixture, never served by the operational app.
+test.beforeEach(async({page})=>{await page.route("https://tile.openstreetmap.org/**",route=>route.fulfill({contentType:"image/png",body:Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aXZkAAAAASUVORK5CYII=","base64")}))})

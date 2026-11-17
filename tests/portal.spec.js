@@ -1,3 +1,4 @@
+import {resultLabel} from '../src/resultLabels.js'
 import { test, expect } from '@playwright/test'
 import { snapshot } from './fixtures/observatory.js'
 const evaluation={id:10,cattleId:2,identifier:'BOV-TEST',ranchName:'Rancho de prueba',createdAt:'2026-11-01T12:00:00',region:'SKIN',result:'NWS',risk:'ALTO',confidence:.9,recommendation:'Orientación general: solicitar revisión veterinaria. No es diagnóstico.',requiresFollowUp:true,status:'ACTIVE',analysisSource:'LOCAL_AI',modelVersion:'v1_experimental',rulesVersion:'recomendaciones_offline_v1',clinicalDiagnosis:'UNASSESSED',scores:{NWS:.9,HEALTHY:.02,LESION:.02,ENVIRONMENT:.02,POOR_QUALITY:.02,OCCLUSION:.02}}
@@ -28,7 +29,7 @@ test('authenticated history separates model output from clinical diagnosis and p
   await expect(page.getByRole('cell',{name:'BOV-TEST',exact:false})).toBeVisible()
   await expect(page.getByRole('cell',{name:'Sin valoración profesional',exact:true})).toBeVisible()
   await page.getByRole('button',{name:'Ver',exact:true}).click()
-  await expect(page.getByRole('heading',{name:'BOV-TEST · NWS'})).toBeVisible()
+  await expect(page.getByRole('heading',{name:'BOV-TEST · '+resultLabel('NWS')})).toBeVisible()
   await expect(page.getByRole('button',{name:'Registrar valoración y cerrar seguimiento'})).toHaveCount(0)
   await page.getByLabel('Observaciones',{exact:true}).fill('Vigilar evolución')
   await page.getByRole('button',{name:'Guardar seguimiento',exact:true}).click()
@@ -48,3 +49,6 @@ test('unavailable server shows a visible error instead of invented data',async({
   await expect(page.getByRole('alert')).toHaveText('Servidor no disponible')
   await expect(page.getByRole('cell')).toHaveCount(0)
 })
+
+// Isolated image fixture, never served by the operational app.
+test.beforeEach(async({page})=>{await page.route("https://tile.openstreetmap.org/**",route=>route.fulfill({contentType:"image/png",body:Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aXZkAAAAASUVORK5CYII=","base64")}))})

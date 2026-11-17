@@ -1,24 +1,26 @@
-# Verificación final local — noviembre de 2026
+# Verificación final de ajustes BoviSafe — 17 de noviembre de 2026
 
-| Comprobación | Estado | Evidencia ejecutada |
+| Comprobación ejecutada | Estado | Resultado |
 |---|---|---|
-| Android debug/release y prueba unitaria | APROBADO | Gradle BUILD SUCCESSFUL; testE2eUnitTest |
-| Samsung físico, variante aislada E2E | APROBADO | 6 pruebas instrumentadas: inferencia real, SQLite, HTTP, migración y reintento |
-| Spring Boot | APROBADO | clean package; 37 pruebas, cero fallos/errores |
-| React producción | APROBADO | vite build y prueba de URL dinámica |
-| Navegador | APROBADO | 11 pruebas, incluidos escenarios A–F y consulta HTTP/foto real |
-| Observatorio sin datos operativos | APROBADO | API real devuelve cero; TEST excluidos sin eliminar registros |
-| Cámara, galería, modo avión y GPS manuales | NO VERIFICADO | Requieren recorrido manual de interfaz en teléfono |
-| Límites regionales digitales | NO VERIFICADO | Se conservan Guerrero y 85 municipios oficiales INEGI; selector de ocho regiones declaradas, sin inventar polígonos regionales |
-| Infraestructura pública y Docker | NO VERIFICADO | No se desplegó; Docker no disponible |
-| Push backend | FALLIDO | Bloqueado por contraseñas históricas PostgreSQL/SMTP pendientes de rotación |
+| Android debug y release | APROBADO | Gradle BUILD SUCCESSFUL |
+| Pruebas unitarias Android | APROBADO | 3 pruebas, incluidas las seis etiquetas y reglas sanitarias |
+| Samsung físico, variante E2E | APROBADO | 9 pruebas: inferencia real, SQLite, HTTP, reintentos, actividad reciente offline, detalle y controles opcionales de ubicación |
+| Spring Boot clean package | APROBADO | 42 pruebas, cero fallos/errores |
+| PostgreSQL | APROBADO | Mismo esquema 006; sin nuevas migraciones ni borrado de historia; fixtures de integración revertidos |
+| React producción y configuración dinámica | APROBADO | Build Vite y prueba de URL sin editar código |
+| Pruebas de navegador | APROBADO | 18 pruebas, cero fallos; Escenarios del mapa, seis etiquetas privadas/tres sanitarias públicas, API real, privacidad, fotografía y OSM opt-in |
+| Cámara, galería, modo avión y recepción GPS manual | NO VERIFICADO | No se ejecutó el recorrido manual; el teléfono se retiró después de las nueve pruebas |
+| Despliegue y bucket S3 remoto | NO VERIFICADO | Sin recursos creados ni gastos; Docker no disponible aquí |
+| Publicación backend | BLOQUEADA | Credencial PostgreSQL histórica aún aceptada y revocación SMTP no comprobada |
 
-El observatorio consulta desde 2026-11-01 (zona America/Mexico_City). No elimina historia. Las cifras proceden de SQL y distinguen evaluaciones, bovinos, predicciones, sospechas profesionales, diagnósticos y casos únicos. Una evaluación HEALTHY no cierra un caso. Datos TEST y SIMULATED nunca alimentan el observatorio.
+Solo NWS, HEALTHY y LESION alimentan las estadísticas sanitarias. ENVIRONMENT, POOR_QUALITY y OCCLUSION permanecen en el historial como análisis no evaluables. Nunca crean casos nuevos, alertas ni bovinos evaluados sanitariamente. Un intento posterior no cierra ni altera un seguimiento previo. La valoración veterinaria no puede confirmar o cerrar un caso utilizando exclusivamente una foto no evaluable.
 
-El mapa operativo no importa mocks. Los fixtures están exclusivamente en tests. Un fallo de API informa el error y mantiene la cartografía sin inventar registros. La vista pública ofrece agregados municipales; los puntos y nombres precisos requieren autorización. Los colores indican conteos registrados, no estimaciones epidemiológicas. No se dibujan límites regionales no verificados.
+Las etiquetas y explicaciones están en español; no se modificaron los pesos ni los seis códigos del modelo. La puntuación no se presenta como probabilidad clínica. Se conservan las recomendaciones preventivas y las orientaciones veterinarias y de notificación.
 
-Las pruebas PostgreSQL controladas se revierten por transacción. La migración 006 preserva los registros y añade procedencia/auditoría, casos y catálogo municipal. No repetir scripts aplicados. Las credenciales reales, fotografías y pruebas locales permanecen ignoradas.
+El mapa dibuja establos y siluetas bovinas en las coordenadas autorizadas del rancho. Las cantidades de animales son únicas; varias fotografías no multiplican bovinos. Las siluetas representan asociaciones al rancho, no posiciones GPS individuales. Las cohortes ámbar, naranja y roja distinguen compatibilidad visual, sospecha profesional y confirmación veterinaria. Un bovino puede aparecer en más de un estado: no sumar esos grupos.
 
-Preparación de despliegue: React vercel.json y API de configuración en tiempo de ejecución; backend Dockerfile, render.yaml sin despliegue automático, perfil prod, variables Neon/SSL y S3 privado; Android API configurable por propiedad de compilación y pantalla de servidor, HTTPS en release. Consultar DESPLIEGUE.md de cada proyecto. No se crearon servicios.
+La selección municipal modifica el borde y el encuadre, conservando los colores territoriales del periodo en los demás municipios. Las tarjetas y gráficas se filtran por municipio; el contexto territorial conserva los demás filtros. Ambos conjuntos de datos se calculan dentro de la transacción de lectura del backend. La vista pública no recibe coordenadas de ranchos; solo dibuja agregados ilustrados con evaluaciones sanitarias válidas, en puntos representativos calculados desde el municipio INEGI.
 
-Antes del despliegue: rotar las credenciales históricas del backend, configurar secretos externos y bucket privado, verificar CORS/HTTPS y ejecutar cámara/galería/modo avión/GPS manualmente. La autorización para push no autoriza el despliegue automático.
+La geometría de Acatepec y Guerrero se validó como correcta. Se reemplazó la máscara mundial por una máscara en píxeles del visor, evitando coordenadas SVG mundiales y recortes inestables. No se atribuye un artefacto específico a OSM sin evidencia. Las capturas controladas están en verification y llevan marca de entorno de pruebas; no se incluyen como datos operativos.
+
+Consultar GUIA_DESPLIEGUE_BOVISAFE.md para Neon, Render, almacenamiento privado, Vercel y Android. SEGURIDAD_ROTACION.md del backend indica los pasos de revocación y publicación limpia. El historial antiguo se respalda localmente; ninguna credencial histórica se considera revocada por crear una rama limpia.

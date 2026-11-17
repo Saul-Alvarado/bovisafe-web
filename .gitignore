@@ -10,3 +10,16 @@ dist/
 
 /verification/
 !.env.production.example
+
+# Private runtime configuration, keys and diagnostics
+.env
+.env.*
+!.env.production.example
+*.pem
+*.key
+*.p12
+*.jks
+*.keystore
+*.dump
+*.backup
+*.log

@@ -1,3 +1,4 @@
+import {resultLabel} from '../src/resultLabels.js'
 import { test, expect } from '@playwright/test'
 import { snapshot,point } from './fixtures/observatory.js'
 import booleanPointInPolygon from '@turf/boolean-point-in-polygon'
@@ -35,9 +36,9 @@ test('A: empty database shows Guerrero and zero without synthetic markers',async
  await page.screenshot({path:'verification/map-empty.png',fullPage:true})
 })
 test('B: exact authorized point and public aggregates stay separate',async({page})=>{
- await mock(page,'data');await expect(page.locator('[data-metric="evaluations"]')).toHaveText('2');await expect(page.locator('.operational-marker')).toHaveCount(0);expect((await page.locator('.bar-track i').boundingBox()).height).toBeGreaterThan(100)
+ await mock(page,'data');await expect(page.locator('[data-metric="evaluations"]')).toHaveText('2');await expect(page.locator('.aggregate-symbol')).toHaveCount(1);await expect(page.locator('.livestock-pin')).toHaveAttribute('title',/Agregado municipal/);expect((await page.locator('.bar-track i').boundingBox()).height).toBeGreaterThan(100)
  await login(page);await expect(page.locator('.operational-marker')).toHaveCount(1);await page.locator('.operational-marker').click()
- await expect(page.getByText('FIXTURE SOLO PRUEBA',{exact:true})).toBeVisible();await expect(page.getByText('2 evaluaciones',{exact:true})).toBeVisible()
+ await expect(page.getByRole('heading',{name:'FIXTURE SOLO PRUEBA',exact:true})).toBeVisible();await expect(page.getByLabel('Detalle del rancho')).toContainText('Evaluaciones sanitarias válidas');await expect(page.getByLabel('Detalle del rancho').locator('.territory-case-list')).toContainText('2')
 })
 test('C: missing coordinates keep counts without an invented marker',async({page})=>{
  await mock(page,'missing');await login(page);await expect(page.locator('[data-metric="evaluations"]')).toHaveText('2');await expect(page.locator('.operational-marker')).toHaveCount(0)
@@ -64,7 +65,7 @@ test('F: wheel, controls, drag and responsive resize keep the actual geography i
  await page.screenshot({path:'verification/map-mobile.png',fullPage:true});expect(errors).toEqual([])
 })
 test('chart bars and category segments are functional filters',async({page})=>{
- await mock(page,'data');await page.getByRole('button',{name:'2026-11: 2 evaluaciones',exact:true}).click();await expect(page.getByLabel('Mes',{exact:true})).toHaveValue('2026-11');await page.getByRole('button',{name:'HEALTHY 0',exact:true}).click();await expect(page.locator('[data-metric="evaluations"]')).toHaveText('0')
+ await mock(page,'data');await page.getByRole('button',{name:'2026-11: 2 evaluaciones',exact:true}).click();await expect(page.getByLabel('Mes',{exact:true})).toHaveValue('2026-11');await page.getByRole('button',{name:resultLabel('HEALTHY')+' 0',exact:true}).click();await expect(page.locator('[data-metric="evaluations"]')).toHaveText('0')
 })
 
 
@@ -78,5 +79,15 @@ test('many authorized ranches cluster without fabricating points',async({page})=
   }
   return route.fulfill({json:[]})
  })
- await page.goto('/');await login(page);await expect(page.locator('.marker-cluster')).toHaveCount(1);await expect(page.locator('.marker-cluster')).toHaveText('25');await page.locator('.marker-cluster').click();await expect(page.locator('.operative-map')).toBeVisible()
+ await page.goto('/');await login(page);await expect(page.locator('.marker-cluster')).toHaveCount(1);await expect(page.locator('.marker-cluster strong')).toHaveText('25');await page.locator('.marker-cluster').click();await expect(page.locator('.operative-map')).toBeVisible()
 })
+
+
+test('only three Spanish sanitary categories are public, even with a legacy six-category response',async({page})=>{
+ await mock(page);await expect(page.locator('.category-bars button')).toHaveCount(3);await expect(page.locator('#obs-category option')).toHaveCount(4);
+ await expect(page.locator('.category-bars')).toContainText(resultLabel('NWS'));await expect(page.locator('.category-bars')).not.toContainText(resultLabel('ENVIRONMENT'));
+ await expect(page.locator('.leaflet-tile-pane img').first()).toBeVisible();
+})
+
+// Isolated image fixture, never served by the operational app.
+test.beforeEach(async({page})=>{await page.route("https://tile.openstreetmap.org/**",route=>route.fulfill({contentType:"image/png",body:Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aXZkAAAAASUVORK5CYII=","base64")}))})

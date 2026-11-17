@@ -6,6 +6,10 @@
     {
       "source": "/runtime-config",
       "destination": "/api/config"
+    },
+    {
+      "source": "/((?!api/|assets/|geo/|runtime-config).*)",
+      "destination": "/index.html"
     }
   ],
   "headers": [
@@ -21,5 +25,6 @@
   ],
   "git": {
     "deploymentEnabled": false
-  }
+  },
+  "installCommand": "npm ci"
 }
