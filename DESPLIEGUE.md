@@ -1,6 +1,6 @@
 # Preparación de Vercel — sin despliegue ejecutado
 
-`vercel.json` configura Vite, `npm run build`, salida `dist` y `/runtime-config` hacia la función `api/config.js`. No se hizo push ni se llamó a herramientas de despliegue.
+`vercel.json` configura Vite, `npm run build`, salida `dist` y `/runtime-config` hacia la función `api/config.js`. La rama master se publicó sin activar despliegues. GitHub Pages está despublicado y su workflow desactivado; vercel.json desactiva despliegues Git automáticos.
 
 Definir `BOVISAFE_API_URL=https://<servicio-render>/api` en Vercel. La función lee la variable al ejecutar y entrega únicamente la URL pública, con Cache-Control no-store. Cambiar la URL requiere actualizar la variable y aplicar la configuración de despliegue de Vercel; no requiere editar el código React. `VITE_API_URL` permanece como alternativa de compilación. La URL de producción debe ser HTTPS y no contener credenciales.
 
@@ -12,12 +12,12 @@ Pruebas:
 
 ```powershell
 npm.cmd run test:config
-$env:BOVISAFE_E2E_FIXTURE='C:/Users/saula/AndroidStudioProjects/BoviSafe/verification/e2e-private.json'
+$env:BOVISAFE_E2E_FIXTURE='<ruta-local-privada>/e2e-private.json'
 npm.cmd test
 ```
 
-Dos pruebas de navegador usan contratos controlados. `tests/live-e2e.spec.js` usa el backend y PostgreSQL reales y las credenciales locales de una cuenta de verificación creada desde Android. Sin ese archivo, esa prueba se marca omitida; no se informa como aprobada. Las credenciales no están en Git. La prueba real valida que las seis puntuaciones y la foto de Android se muestran y que las observaciones se persisten.
+Diez pruebas de navegador usan contratos controlados. `tests/live-e2e.spec.js` usa el backend y PostgreSQL reales y las credenciales locales de una cuenta de verificación creada desde Android. Sin ese archivo, esa prueba se marca omitida; no se informa como aprobada. Las credenciales no están en Git. La prueba real valida que las seis puntuaciones y la foto de Android se muestran y que las observaciones se persisten.
 
-El observatorio operativo solo usa GeoJSON de `GET /api/territory/ranches`, con permisos de propietario o veterinario. El contorno es una referencia cartográfica; no se crean puntos aproximados para ranchos sin coordenadas. La demostración original queda identificada y separada de estos datos.
+El observatorio consulta /api/observatory para agregados públicos y /api/observatory/authorized para ubicaciones autorizadas. Cartografía oficial INEGI de Guerrero y 85 municipios; la demostración está retirada y solo conserva fixtures de pruebas. Cero registros produce cero cifras y ningún marcador; un error nunca activa datos ficticios.
 
 La conexión pública Vercel–Render, TLS y CORS de los dominios finales están pendientes de credenciales y autorización para publicar. Referencias: https://vercel.com/docs/frameworks/frontend/vite y https://vercel.com/docs/environment-variables.
