@@ -9,8 +9,10 @@ test('authenticated history separates model output from clinical diagnosis and p
     const path=new URL(route.request().url()).pathname
     if(path==='/api/auth/login')return route.fulfill({json:{farmerId:1,firstName:'Productor',token:'test-token'}})
     if(path==='/api/observatory')return route.fulfill({json:snapshot()})
+    if(path==='/api/reports/municipalities')return route.fulfill({json:{rows:[],totals:{},from:'2026-11-01',to:'2026-11-16',generatedAt:'2026-11-16T12:00:00Z'}})
     expect(route.request().headers().authorization).toBe('Bearer test-token')
     if(path.startsWith('/api/observatory'))return route.fulfill({json:snapshot({authorized:path.endsWith('/authorized')})})
+    if(path==='/api/reports/ranches')return route.fulfill({json:{rows:[],totals:{},from:'2026-11-01',to:'2026-11-16',generatedAt:'2026-11-16T12:00:00Z'}})
     if(path==='/api/territory/ranches')return route.fulfill({json:{type:'FeatureCollection',features:[],unlocatedRanches:0,scope:'AUTHORIZED_ONLY'}})
     if(path==='/api/evaluations')return route.fulfill({json:[evaluation]})
     if(path==='/api/dashboard/resumen')return route.fulfill({json:{totalBovinos:1,totalEvaluaciones:1,enSeguimiento:1}})

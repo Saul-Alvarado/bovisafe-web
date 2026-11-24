@@ -1,3 +1,77 @@
-.operational-portal{max-width:1200px;margin:auto;padding:28px;color:#163e33}.operational-portal header,.portal-toolbar{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}.operational-portal h1{font-size:28px}.operational-portal p{line-height:1.6}.operational-portal button{padding:10px 16px;border:1px solid #648c7b;border-radius:8px;background:#f5fbf7;color:#214c3d;cursor:pointer;margin:5px}.operational-portal button:disabled{opacity:.5;cursor:wait}.operational-portal label{display:flex;flex-direction:column;gap:8px;margin:16px 0}.operational-portal input,.operational-portal select,.operational-portal textarea{padding:12px;border:1px solid #a4b8ae;border-radius:6px;background:white;color:#163e33;max-width:100%;font:inherit}.portal-login{max-width:430px;margin:35px auto;padding:24px;background:#fff;border-radius:16px}.portal-metrics{display:flex;gap:20px;flex-wrap:wrap}.portal-metrics p{flex:1;background:white;padding:20px;border-radius:12px;min-width:180px}.portal-metrics strong{display:block;font-size:32px}.portal-table{overflow:auto;margin:20px 0}.portal-table table{border-collapse:collapse;width:100%;background:white}.portal-table caption{text-align:left;padding:14px 0}.portal-table th,.portal-table td{text-align:left;border-bottom:1px solid #dce7df;padding:14px}.portal-error{background:#ffe5df;padding:15px}.portal-report{background:white;border:1px solid #c1d3c8;padding:24px;border-radius:12px}.portal-report img{max-width:100%;max-height:340px;object-fit:contain}.portal-advice{white-space:pre-line}.portal-report dl{display:flex;gap:18px;flex-wrap:wrap}.portal-report dd{margin:5px 0}.portal-report article{border-top:1px solid #dce7df;padding:12px}.operational-portal footer{margin-top:30px;padding:20px;background:#e9f3ec;line-height:1.6}.return-to-portal{position:fixed;bottom:20px;left:20px;z-index:9999;padding:14px;background:#153f31;color:white;border:2px solid white;border-radius:12px}
-
-.portal-report textarea{display:block;width:100%;min-height:100px}
+/* Private portal: owners and veterinarians */
+.operational-portal{max-width:1440px;margin:auto;padding:0 clamp(16px,4vw,48px) 32px;color:var(--ink);background:var(--paper)}
+.portal-header{position:sticky;top:0;z-index:1200;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;min-height:72px;margin:0 calc(-1*clamp(16px,4vw,48px));padding:10px clamp(16px,4vw,48px);background:#f5f7f2e6;backdrop-filter:saturate(1.4) blur(12px);-webkit-backdrop-filter:saturate(1.4) blur(12px);border-bottom:1px solid var(--line)}
+.portal-brand{display:flex;align-items:center;gap:12px}
+.portal-brand h1{font-family:var(--display);font-size:20px;letter-spacing:-.5px;margin:0;line-height:1.2}
+.portal-brand h1 span{color:var(--green-3)}
+.portal-brand small{font-size:12px;color:var(--muted)}
+.portal-header-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.portal-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.portal-user{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:var(--green);background:var(--mint);padding:7px 11px;border-radius:999px}
+.operational-portal .portal-header button,.portal-history button,.portal-report button,.portal-notice button{display:inline-flex;align-items:center;gap:7px;padding:8px 13px;border:1px solid #cfdcd2;border-radius:10px;background:#fff;color:var(--green);font-weight:600;font-size:13px;margin:0;transition:background .2s}
+.operational-portal .portal-header button:hover,.portal-history button:hover,.portal-report button:hover{background:var(--mint-2)}
+.operational-portal button.danger{color:#8f2f28;border-color:#ecc9c3}
+.operational-portal button:disabled{opacity:.5;cursor:wait}
+.portal-lead{font-size:13.5px;line-height:1.7;color:var(--muted);max-width:900px;margin:18px 0 0}
+.portal-error{background:#fdecea;border:1px solid #f0c4bd;color:#7c2a22;padding:13px 16px;border-radius:12px;margin:16px 0}
+.portal-login-wrap{display:grid;place-items:center;padding:clamp(24px,6vw,72px) 0}
+.portal-login{width:100%;max-width:420px;padding:28px;background:#fff;border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow-lg);display:flex;flex-direction:column;gap:4px}
+.portal-login-icon{width:46px;height:46px;border-radius:14px;display:grid;place-items:center;background:var(--mint);color:var(--green);margin-bottom:8px}
+.portal-login h2{font-family:var(--display);font-size:24px;letter-spacing:-.6px;margin:0}
+.portal-login p{font-size:13.5px;color:var(--muted);margin:4px 0 10px}
+.portal-login label,.portal-followup label,.portal-history-filters label,.portal-vet label{display:flex;flex-direction:column;gap:6px;margin:8px 0;font-size:12.5px;font-weight:700;color:var(--ink-2)}
+.operational-portal input,.operational-portal select,.operational-portal textarea{height:44px;padding:0 12px;border:1px solid #cfdcd2;border-radius:10px;background:#fbfdfb;color:var(--ink);max-width:100%;font:inherit;font-size:14px;box-sizing:border-box}
+.operational-portal textarea{height:auto;min-height:100px;padding:10px 12px;display:block;width:100%}
+.operational-portal input:focus,.operational-portal select:focus,.operational-portal textarea:focus{outline:none;border-color:var(--green-2);box-shadow:0 0 0 3px #2f7d6226}
+.portal-login button.primary{height:46px;margin-top:10px}
+.portal-login small{font-size:11.5px;color:var(--faint);text-align:center;margin-top:8px}
+.portal-history{scroll-margin-top:84px;margin:40px 0;background:#fff;border:1px solid var(--line);border-radius:20px;padding:20px;box-shadow:var(--shadow)}
+.portal-history-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:8px}
+.portal-history-head h2{font-family:var(--display);font-size:24px;letter-spacing:-.6px;margin:6px 0 0}
+.portal-history-filters{display:flex;gap:12px;flex-wrap:wrap}
+.portal-history-filters>div{display:flex;flex-direction:column;gap:6px;min-width:200px}
+.portal-history-filters label{margin:0}
+.portal-notice{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13px;background:var(--mint-2);border:1px solid #d6e7dc;padding:10px 12px;border-radius:10px;margin:10px 0}
+.portal-notice.warn{background:#fff7e8;border-color:#f0dcae;color:#6b4c12}
+.portal-table{overflow:auto;margin:12px 0 0;border:1px solid var(--line);border-radius:12px}
+.portal-table table{border-collapse:collapse;width:100%;background:#fff;font-size:13px;min-width:860px}
+.portal-table caption{text-align:left;padding:12px 14px;font-size:12.5px;color:var(--muted);caption-side:top;background:#fafcfa;border-bottom:1px solid var(--line-2)}
+.portal-table th{position:sticky;top:0;background:#f4f8f5;font-size:11.5px;font-weight:700;color:var(--ink-2);text-transform:none}
+.portal-table th,.portal-table td{text-align:left;border-bottom:1px solid var(--line-2);padding:11px 14px;vertical-align:top}
+.portal-table td small{color:var(--muted)}
+.portal-table tr:hover td{background:#f7fbf8}
+.portal-table tr.is-selected td{background:#eef6f0}
+.portal-table .num{text-align:right;font-variant-numeric:tabular-nums}
+.portal-table .nowrap{white-space:nowrap}
+.result-pill{display:inline-block;font-size:12px;font-weight:600;padding:2px 8px;border-radius:999px;background:#f1f4f1;color:var(--ink-2)}
+.result-pill.result-NWS{background:var(--visual-bg);color:var(--visual)}.result-pill.result-LESION{background:var(--suspected-bg);color:var(--suspected)}.result-pill.result-HEALTHY{background:var(--mint);color:var(--green)}
+.portal-empty{font-size:13px;color:var(--muted);padding:12px 2px}
+.portal-report{background:#fff;border:1px solid var(--line);padding:22px;border-radius:20px;box-shadow:var(--shadow);margin:0 0 32px}
+.portal-report-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;border-bottom:1px solid var(--line-2);padding-bottom:12px;margin-bottom:16px}
+.portal-report-head h2{font-family:var(--display);font-size:21px;letter-spacing:-.4px;margin:0}
+.portal-report-grid{display:grid;grid-template-columns:minmax(220px,360px) 1fr;gap:22px;font-size:13.5px;line-height:1.65}
+.portal-report-grid p{margin:0 0 10px}
+.portal-report-photo{background:#f2f5f2;border-radius:14px;display:grid;place-items:center;min-height:220px;overflow:hidden;color:var(--faint);font-size:13px}
+.portal-report img{max-width:100%;max-height:360px;object-fit:contain;display:block}
+.portal-advice{white-space:pre-line;background:var(--mint-2);border-radius:10px;padding:10px 12px}
+.portal-meta{font-size:12px;color:var(--muted)}
+.portal-scores{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin:12px 0}
+.portal-scores>div{background:#f7faf7;border:1px solid var(--line-2);border-radius:10px;padding:8px 10px}
+.portal-scores dt{font-size:11.5px;color:var(--muted)}.portal-scores dd{margin:3px 0 0;font-weight:800;font-variant-numeric:tabular-nums}
+.portal-followup{margin-top:18px;padding-top:14px;border-top:1px solid var(--line-2);display:flex;flex-direction:column;gap:6px}
+.portal-followup>button{align-self:flex-start;margin-top:8px}
+.portal-vet{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px;margin-top:12px;padding:12px;border-radius:12px;background:#f7faf7}
+.portal-vet label{margin:0}
+.portal-report h3{font-family:var(--display);font-size:16px;margin:20px 0 8px}
+.portal-review{border-top:1px solid var(--line-2);padding:12px 0}
+.portal-review p{margin:6px 0}.portal-review small{color:var(--muted)}
+.portal-footer{margin-top:30px;padding:16px 18px;background:var(--mint-2);border:1px solid #d6e7dc;border-radius:14px;line-height:1.6;font-size:13px;color:var(--ink-2)}
+.operational-portal .observatory{padding:0}
+@media(max-width:760px){
+ .portal-brand h1{font-size:16px}.portal-brand small{display:none}
+ .portal-header{padding-top:8px;padding-bottom:8px}
+ .portal-header-actions{width:100%;justify-content:space-between;gap:6px}.operational-portal .portal-header button{padding:7px 10px;font-size:12.5px}
+ .portal-history{padding:14px;border-radius:16px}
+ .portal-history-filters{width:100%}.portal-history-filters>div{flex:1;min-width:140px}
+ .portal-report{padding:16px}.portal-report-grid{grid-template-columns:1fr}
+}
