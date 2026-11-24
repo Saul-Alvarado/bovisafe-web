@@ -170,3 +170,10 @@
  .overview-view .livestock-pin{transform-origin:52px 50px}
 }
 @media(prefers-reduced-motion:reduce){.surveillance-map *{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
+/* Registered inventory without evaluations in the period: neutral, dashed, always beneath surveillance markers. */
+.tone-inventory{--pin:#66786f;--soft:#eef2ef}
+.livestock-pin.tone-inventory .livestock-house{border-style:dashed;background:#fbfcfb}
+.livestock-pin.tone-inventory .livestock-count{background:#fff;color:var(--pin);border-color:var(--pin)}
+.bovine-cluster.tone-inventory .cluster-core{background:#fbfcfb;color:var(--pin);border:2px dashed var(--pin);box-shadow:0 6px 14px #10342a26}
+.territory-legend .tone-inventory .legend-swatch{background:#fbfcfb;border-style:dashed}
+.cluster-empty{display:none!important}

@@ -8,10 +8,12 @@ const active = { registered_ranches: 3, registered_animals: 17, evaluated_ranche
 const unlocated = { code: 'UNLOCATED', name: 'Sin municipio verificado', regions: [], ...zero, registered_ranches: 1, registered_animals: 2 }
 function municipalReport(url) {
   const municipality = url.searchParams.get('municipality')
-  const rows = catalog.municipalities.features.map(f => ({ code: f.properties.code, name: f.properties.name, regions: f.properties.code === '12029' ? ['CENTRO'] : [], ...(f.properties.code === '12029' ? active : zero) }))
+  const region = url.searchParams.get('region')
+  // Like the server: the region parameter keeps only ranches that declared that region.
+  const rows = catalog.municipalities.features.map(f => ({ code: f.properties.code, name: f.properties.name, regions: f.properties.code === '12029' ? ['CENTRO'] : [], ...(f.properties.code === '12029' && (!region || region === 'CENTRO') ? active : zero) }))
     .filter(r => !municipality || r.code === municipality).sort((a, b) => a.name.localeCompare(b.name, 'es'))
   const totals = { ...active, registered_ranches: 4, registered_animals: 19 }
-  return { scope: 'PUBLIC_AGGREGATED', from: url.searchParams.get('from') || '2026-11-01', to: url.searchParams.get('to') || '2026-11-24', generatedAt: '2026-11-24T12:00:00Z', rows, unlocated: municipality ? null : unlocated, totals: municipality ? active : totals, criteria: 'Registros OPERATIONAL; TEST excluidos.' }
+  return { scope: 'PUBLIC_AGGREGATED', from: url.searchParams.get('from') || '2026-11-01', to: url.searchParams.get('to') || '2026-11-24', generatedAt: '2026-11-24T12:00:00Z', rows, unlocated: municipality || region ? null : unlocated, totals: municipality ? active : totals, criteria: 'Registros OPERATIONAL; TEST excluidos.' }
 }
 const ranchRows = [
   { ranch_id: 7, ranch_name: '=HYPERLINK("http://malicioso")', municipality_code: '12029', municipality_name: 'Chilpancingo de los Bravo', region: 'CENTRO', access: 'OWNER', active: true, ...active, registered_animals: 12, last_evaluation_at: '2026-11-17T06:20:00Z' },
@@ -60,11 +62,11 @@ test('public municipal report lists 85 municipalities, Guerrero totals and expor
   expect(name).toMatch(/^bovisafe_reporte-municipal_2026-11-01_.*\.csv$/)
   expect(text.charCodeAt(0)).toBe(0xFEFF)
   const lines = text.slice(1).split('\r\n')
-  expect(lines[0]).toBe('Clave INEGI,Municipio,Región declarada,Ranchos registrados,Bovinos registrados,Bovinos evaluados (únicos),Evaluaciones sanitarias válidas,Bovinos con resultado compatible con miasis (predicción IA),Bovinos con sospecha profesional,Bovinos con diagnóstico veterinario confirmado,Bovinos en seguimiento,Casos sospechosos,Casos confirmados,Casos cerrados')
+  expect(lines[0]).toBe('Clave INEGI,Municipio,Región (catálogo oficial),Región declarada por ranchos,Ranchos registrados,Bovinos registrados,Bovinos evaluados (únicos),Evaluaciones sanitarias válidas,Bovinos con resultado compatible con miasis (predicción IA),Bovinos con sospecha profesional,Bovinos con diagnóstico veterinario confirmado,Bovinos en seguimiento,Casos sospechosos,Casos confirmados,Casos cerrados')
   expect(lines.filter(l => /^12\d{3},/.test(l))).toHaveLength(85)
-  expect(lines).toContain('12029,Chilpancingo de los Bravo,Centro,3,17,2,5,1,0,1,1,0,1,1')
-  expect(lines).toContain('12076,Acatepec,,0,0,0,0,0,0,0,0,0,0,0')
-  expect(lines).toContain('TOTAL,Total Guerrero,,4,19,2,5,1,0,1,1,0,1,1')
+  expect(lines).toContain('12029,Chilpancingo de los Bravo,Centro,Centro,3,17,2,5,1,0,1,1,0,1,1')
+  expect(lines).toContain('12076,Acatepec,Montaña,,0,0,0,0,0,0,0,0,0,0,0')
+  expect(lines).toContain('TOTAL,Total Guerrero,,,4,19,2,5,1,0,1,1,0,1,1')
   expect(text).toContain('no constituye un diagnóstico confirmado')
   expect(text).not.toMatch(/FIXTURE|ranch_name|latitude/)
   expect(calls.filter(c => c.path === '/api/reports/municipalities').every(c => !c.auth)).toBeTruthy()
@@ -74,7 +76,7 @@ test('public municipal report lists 85 municipalities, Guerrero totals and expor
   await expect(table.locator('tbody tr')).toHaveCount(2)
   await page.getByLabel('Separador del archivo CSV').selectOption('semicolon')
   const second = await download(page)
-  expect(second.text.slice(1).split('\r\n')[1]).toBe('12029;Chilpancingo de los Bravo;Centro;3;17;2;5;1;0;1;1;0;1;1')
+  expect(second.text.slice(1).split('\r\n')[1]).toBe('12029;Chilpancingo de los Bravo;Centro;Centro;3;17;2;5;1;0;1;1;0;1;1')
 })
 
 test('report filters are sent to the service and municipality filter narrows the table', async ({ page }) => {
@@ -85,8 +87,9 @@ test('report filters are sent to the service and municipality filter narrows the
   await expect(table.locator('tbody tr')).toHaveCount(1)
   await page.getByLabel('Región (reporte)', { exact: true }).selectOption('CENTRO')
   await page.getByLabel('Mes (reporte)', { exact: true }).selectOption('2026-11')
-  await expect.poll(() => calls.filter(c => c.path === '/api/reports/municipalities').at(-1)?.query).toContain('month=2026-11')
-  expect(calls.filter(c => c.path === '/api/reports/municipalities').at(-1).query).toContain('region=CENTRO')
+  // The period goes to the server; the declared-region slice is requested alongside the general one.
+  await expect.poll(() => calls.some(c => c.path === '/api/reports/municipalities' && c.query.includes('month=2026-11') && c.query.includes('region=CENTRO'))).toBeTruthy()
+  expect(calls.some(c => c.path === '/api/reports/municipalities' && c.query.includes('month=2026-11') && !c.query.includes('region='))).toBeTruthy()
   await page.getByRole('button', { name: 'Restablecer', exact: true }).click()
   await expect(table.locator('tbody tr')).toHaveCount(86)
 })
@@ -164,4 +167,20 @@ test('mobile layout keeps reports and map within the viewport', async ({ page })
   await expect(page.getByRole('region', { name: 'Tabla del reporte municipal' }).locator('tbody tr')).toHaveCount(86)
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy()
   await page.screenshot({ path: 'verification/reports-mobile.png', fullPage: false })
+})
+
+test('private map shows authorized ranches without evaluations as a municipal inventory, never at an invented point', async ({ page }) => {
+  const calls = await mock(page)
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Acceder a mis registros', exact: true }).click()
+  await page.getByLabel('Correo', { exact: true }).fill('fixture@test.invalid'); await page.getByLabel('Contraseña', { exact: true }).fill('fixture-password')
+  await page.getByRole('button', { name: 'Iniciar sesión', exact: true }).click()
+  await page.locator('.operative-map').scrollIntoViewIfNeeded()
+  const inventory = page.locator('.livestock-pin.tone-inventory')
+  await expect(inventory).toHaveCount(1)
+  await expect(inventory).toHaveAttribute('title', 'Inventario municipal: Acatepec')
+  await expect(inventory.locator('.livestock-count')).toHaveText('5')
+  expect(calls.filter(c => c.path === '/api/reports/ranches').every(c => c.auth === 'Bearer fixture-token')).toBeTruthy()
+  await inventory.click()
+  await expect(page.getByLabel('Inventario sin evaluaciones')).toContainText('Ranchos autorizados sin evaluar1')
 })

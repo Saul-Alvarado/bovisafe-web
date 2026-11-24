@@ -60,7 +60,7 @@ test('F: wheel, controls, drag and responsive resize keep the actual geography i
  const initial=Number(await map.getAttribute('data-zoom'));await map.hover();await page.mouse.wheel(0,-500);await expect.poll(async()=>Number(await map.getAttribute('data-zoom'))).toBeGreaterThan(initial)
  const rect=await map.boundingBox();await page.mouse.move(rect.x+rect.width/2,rect.y+rect.height/2);await page.mouse.down();await page.mouse.move(rect.x+rect.width-8,rect.y+30,{steps:15});await page.mouse.up()
  await page.getByRole('button',{name:'Restablecer vista completa',exact:true}).click();await expect.poll(async()=>Number(await map.getAttribute('data-zoom'))).toBeCloseTo(initial,0)
- await page.getByLabel('Región declarada',{exact:true}).selectOption('SIERRA');await expect(page.getByLabel('Región declarada',{exact:true})).toHaveValue('SIERRA')
+ await page.getByLabel('Región',{exact:true}).selectOption('SIERRA');await expect(page.getByLabel('Región',{exact:true})).toHaveValue('SIERRA')
  await page.setViewportSize({width:390,height:844});await expect(map).toBeVisible();await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBeTruthy()
  await page.screenshot({path:'verification/map-mobile.png',fullPage:true});expect(errors).toEqual([])
 })

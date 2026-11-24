@@ -1,11 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Download, FileSpreadsheet, Lock, MapPinned, RotateCcw, Warehouse, ArrowDownUp, Info } from 'lucide-react'
+import { Download, FileSpreadsheet, Lock, MapPinned, RotateCcw, Warehouse, ArrowDownUp, Info, X } from 'lucide-react'
 import { getApiBase } from '../apiConfig.js'
+import { getJson, fingerprint } from '../live/live.js'
 import { toCsv, downloadCsv, safeFileName, SEPARATORS } from '../reports/csv.js'
-import { MUNICIPAL_METRICS, RANCH_METRICS, municipalColumns, ranchColumns, regionNames, mexicoDate, num, ACCESS } from '../reports/definitions.js'
+import { MUNICIPAL_METRICS, RANCH_METRICS, municipalColumns, ranchColumns, regionNames, mexicoDate, num, ACCESS, sumRows, officialRegionName } from '../reports/definitions.js'
+import { combineRegionRows, regionIncludes, ranchInRegion, MEMBERSHIP_LABEL, REGION_SOURCE, UNASSIGNED_NOTE } from '../territory/regions.js'
 
 const fmt = value => num(value).toLocaleString('es-MX')
-const reportDefaults = (start, end) => ({ from: start, to: end, month: '', region: '', municipality: '' })
+// An empty 'to' always means "today" for the server (America/Mexico_City), so new records keep entering.
+const reportDefaults = start => ({ from: start, to: '', month: '', region: '', municipality: '' })
+const MUNICIPAL_KEYS = [...new Set([...MUNICIPAL_METRICS.map(m => m.key), 'evaluated_ranches', 'nws_predictions', 'follow_up_cases'])]
+const RANCH_KEYS = RANCH_METRICS.map(m => m.key)
+const query = params => new URLSearchParams(Object.entries(params).filter(([, v]) => v)).toString()
 
 function useVisible(ref) {
   const [visible, setVisible] = useState(typeof IntersectionObserver === 'undefined')
@@ -18,29 +24,35 @@ function useVisible(ref) {
   return visible
 }
 
-function useReport(path, filters, token, enabled) {
+/**
+ * Loads one report. A new question shows the loading state; periodic ticks refresh silently, keep the
+ * table if they fail and replace the data only when its content changed. Sorting, filters and an export
+ * in progress live outside this state, so a refresh never resets them.
+ */
+function useReport(url, token, enabled, tick, track) {
   const [state, setState] = useState({ data: null, error: '', busy: false })
   const [revision, setRevision] = useState(0)
-  const api = getApiBase()
+  const memory = useRef({ url: null, revision: 0, key: null })
   useEffect(() => {
-    if (!enabled) return
-    const controller = new AbortController()
-    setState(s => ({ ...s, busy: true, error: '' }))
-    const query = new URLSearchParams(Object.entries(filters).filter(([, v]) => v))
-    fetch(`${api}${path}?${query}`, { headers: token ? { Authorization: `Bearer ${token}` } : {}, signal: controller.signal })
-      .then(async r => {
-        if (!r.ok) {
-          let message; try { message = (await r.json()).message } catch { /* not JSON */ }
-          if (r.status === 404 && !message) message = 'El servicio de reportes no está disponible en este servidor.'
-          if (r.status === 401) message = 'Tu sesión terminó. Inicia sesión nuevamente para consultar el reporte privado.'
-          throw new Error(message || `No se pudo consultar el reporte (${r.status})`)
-        }
-        return r.json()
-      })
-      .then(data => setState({ data, error: '', busy: false }))
-      .catch(e => { if (e.name !== 'AbortError') setState({ data: null, error: e.message, busy: false }) })
+    if (!enabled || !url) return
+    const controller = new AbortController(), m = memory.current
+    const background = m.url === url && m.revision === revision && m.key !== null
+    m.revision = revision
+    if (!background) setState(s => ({ ...s, busy: true, error: '' }))
+    const request = getJson(url, { token, signal: controller.signal, fallback: 'No se pudo consultar el reporte' })
+    ;(track ? track(request) : request).then(data => {
+      const key = fingerprint(data), changed = key !== m.key || m.url !== url
+      m.url = url; m.key = key
+      setState(s => (changed || s.busy || s.error ? { data: changed ? data : s.data, error: '', busy: false } : s))
+    }).catch(e => {
+      if (e.name === 'AbortError') return
+      if (background) { setState(s => (s.busy ? { ...s, busy: false } : s)); return }
+      m.url = url; m.key = null
+      setState({ data: null, error: e.message, busy: false })
+    })
     return () => controller.abort()
-  }, [api, path, token, enabled, revision, filters])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [url, token, enabled, revision, tick])
   return { ...state, retry: () => setRevision(v => v + 1) }
 }
 
@@ -62,19 +74,31 @@ function sortRows(rows, sort, text) {
   })
 }
 
-export default function Reports({ token, geography, months, start, end, onLogin, observatoryFilters }) {
+export default function Reports({ token, geography, months, start, end, onLogin, observatoryFilters, tick = 0, track }) {
   const ref = useRef(null)
   const visible = useVisible(ref)
+  const api = getApiBase()
   const [tab, setTab] = useState('municipal')
-  const [filters, setFilters] = useState(() => reportDefaults(start, end))
+  const [filters, setFilters] = useState(() => reportDefaults(start))
   const [separator, setSeparator] = useState('comma')
   const [onlyActive, setOnlyActive] = useState(false)
   const [sort, setSort] = useState({ key: '', dir: 1 })
   const regions = geography?.regions || []
   const municipalityOptions = useMemo(() => geography?.municipalities.features.map(f => f.properties).sort((a, b) => a.name.localeCompare(b.name, 'es')) || [], [geography])
-  const municipal = useReport('/reports/municipalities', filters, null, visible && tab === 'municipal')
-  const ranch = useReport('/reports/ranches', filters, token, visible && tab === 'ranch' && !!token)
-  const report = tab === 'municipal' ? municipal : ranch
+  const regionOptions = filters.region ? municipalityOptions.filter(m => regionIncludes(filters.region, m.code)) : municipalityOptions
+  const regionName = filters.region ? regionNames([filters.region], regions) : ''
+  const municipalityName = filters.municipality ? municipalityOptions.find(m => m.code === filters.municipality)?.name || filters.municipality : ''
+
+  // Region and municipality are applied here, so changing them updates table and CSV at once. The
+  // server is asked for the period, plus the declared-region slice while a region is active.
+  const period = { from: filters.from, to: filters.to, month: filters.month }
+  const municipalOn = visible && tab === 'municipal', ranchOn = visible && tab === 'ranch' && !!token
+  const all = useReport(`${api}/reports/municipalities?${query(period)}`, null, municipalOn, tick, track)
+  const declared = useReport(filters.region ? `${api}/reports/municipalities?${query({ ...period, region: filters.region })}` : null, null, municipalOn && !!filters.region, tick, track)
+  const ranch = useReport(`${api}/reports/ranches?${query(period)}`, token, ranchOn, tick, track)
+  const regionReady = !filters.region || !!declared.data
+  const municipalReport = { data: all.data && regionReady ? all.data : null, busy: all.busy || (!!filters.region && declared.busy), error: all.error || (filters.region ? declared.error : ''), retry: () => { all.retry(); if (filters.region) declared.retry() } }
+  const report = tab === 'municipal' ? municipalReport : ranch
   useEffect(() => setSort({ key: '', dir: 1 }), [tab])
 
   const update = (key, value) => setFilters(f => ({ ...f, [key]: value, ...(['from', 'to'].includes(key) ? { month: '' } : {}), ...(key === 'region' ? { municipality: '' } : {}) }))
@@ -82,37 +106,58 @@ export default function Reports({ token, geography, months, start, end, onLogin,
 
   const metrics = tab === 'municipal' ? MUNICIPAL_METRICS : RANCH_METRICS
   const data = report.data
-  const rows = useMemo(() => {
+  const scoped = useMemo(() => {
     if (!data) return []
-    let list = tab === 'municipal' ? [...data.rows, ...(data.unlocated ? [data.unlocated] : [])] : data.rows
-    if (tab === 'municipal' && onlyActive) list = list.filter(r => num(r.registered_ranches) > 0 || num(r.evaluations) > 0)
+    if (tab === 'ranch') return data.rows.filter(r => ranchInRegion(filters.region, r.municipality_code, r.region) && (!filters.municipality || r.municipality_code === filters.municipality))
+    let list
+    if (filters.region) {
+      const unlocated = declared.data?.unlocated
+      list = [...combineRegionRows(data.rows, declared.data?.rows, filters.region), ...(unlocated && (num(unlocated.registered_ranches) || num(unlocated.evaluations)) ? [{ ...unlocated, membership: 'declared' }] : [])]
+    } else list = [...data.rows, ...(data.unlocated ? [data.unlocated] : [])]
+    return filters.municipality ? list.filter(r => r.code === filters.municipality) : list
+  }, [data, declared.data, tab, filters.region, filters.municipality])
+  // Totals are always the sum of exactly the rows in scope, so table, footer and CSV agree.
+  const totals = useMemo(() => sumRows(scoped, tab === 'municipal' ? MUNICIPAL_KEYS : RANCH_KEYS), [scoped, tab])
+  const rows = useMemo(() => {
+    const list = tab === 'municipal' && onlyActive ? scoped.filter(r => num(r.registered_ranches) > 0 || num(r.evaluations) > 0) : scoped
     return sortRows(list, sort, r => String(tab === 'municipal' ? r.name : r.ranch_name))
-  }, [data, tab, onlyActive, sort])
-  const totals = data?.totals
+  }, [scoped, tab, onlyActive, sort])
+
+  const place = filters.municipality ? municipalityName : filters.region ? regionName : ''
+  const totalLabel = tab === 'municipal' ? `Total ${place || 'Guerrero'}` : `Total de ranchos autorizados${place ? ` · ${place}` : ''}`
+  const scopeLabel = filters.municipality ? `Municipio ${municipalityName}` : filters.region ? `Región ${regionName}` : tab === 'municipal' ? 'Todo Guerrero · 85 municipios' : 'Todos los ranchos autorizados'
+  const activeFilters = [
+    filters.month && ['month', `Mes ${filters.month}`],
+    !filters.month && filters.from && filters.from !== start && ['from', `Desde ${filters.from}`],
+    !filters.month && filters.to && ['to', `Hasta ${filters.to}`],
+    filters.region && ['region', `Región ${regionName}`],
+    filters.municipality && ['municipality', municipalityName],
+  ].filter(Boolean)
 
   function exportCsv() {
-    const columns = tab === 'municipal' ? municipalColumns(regions) : ranchColumns(regions)
-    const label = tab === 'municipal' ? 'Total Guerrero' : 'Total de ranchos autorizados'
+    const columns = tab === 'municipal' ? municipalColumns(regions, !!filters.region) : ranchColumns(regions)
     const totalRow = columns.map((c, i) => {
-      if (tab === 'municipal') return i === 0 ? 'TOTAL' : i === 1 ? label : metrics.some(m => m.key === c.key) ? num(totals?.[c.key]) : ''
-      return i === 0 ? label : metrics.some(m => m.key === c.key) ? num(totals?.[c.key]) : ''
+      if (tab === 'municipal') return i === 0 ? 'TOTAL' : i === 1 ? totalLabel : metrics.some(m => m.key === c.key) ? num(totals[c.key]) : ''
+      return i === 0 ? totalLabel : metrics.some(m => m.key === c.key) ? num(totals[c.key]) : ''
     })
-    const scope = [filters.region && `Región: ${regionNames([filters.region], regions)}`, filters.municipality && `Municipio: ${municipalityOptions.find(m => m.code === filters.municipality)?.name}`].filter(Boolean).join(' · ') || 'Todo Guerrero'
     const notes = [
       ['Reporte', tab === 'municipal' ? 'Reporte municipal de vigilancia bovina (público, agregado)' : 'Reporte privado por rancho (solo ranchos autorizados)'],
       ['Periodo', `${data.from} a ${data.to}`],
-      ['Ámbito', scope],
+      ['Ámbito', filters.municipality ? `Municipio: ${municipalityName}` : filters.region ? `Región: ${regionName}` : 'Todo Guerrero'],
+      ['Filtros activos', activeFilters.map(([, label]) => label).join(' · ') || 'Ninguno'],
+      ['Filas', String(rows.length)],
       ['Generado', mexicoDate(data.generatedAt) + ' (hora del centro de México)'],
       ['Criterios', data.criteria || 'Registros operativos; registros de prueba excluidos.'],
       ['Aviso', 'Una predicción de IA compatible con miasis no constituye un diagnóstico confirmado. Bovinos evaluados cuenta animales únicos; evaluaciones cuenta fotografías analizadas.'],
     ]
+    if (filters.region) notes.push(['Regionalización', `${REGION_SOURCE} Un municipio cuenta completo si pertenece a la región; fuera de ella solo cuentan los ranchos que declararon la región. Sierra se delimita por localidades. ${UNASSIGNED_NOTE}`])
     if (tab === 'municipal' && onlyActive) notes.push(['Filtro de tabla', 'Solo municipios con registros'])
     const csv = toCsv(columns, rows, { separator: SEPARATORS[separator], footer: [totalRow], notes })
-    downloadCsv(csv, safeFileName('bovisafe', tab === 'municipal' ? 'reporte-municipal' : 'reporte-ranchos', data.from, data.to, filters.region, filters.municipality))
+    downloadCsv(csv, safeFileName('bovisafe', tab === 'municipal' ? 'reporte-municipal' : 'reporte-ranchos', data.from, data.to, filters.region, filters.municipality && municipalityName))
   }
 
   const locked = tab === 'ranch' && !token
-  const emptyRanches = tab === 'ranch' && data && data.rows.length === 0
+  const emptyRanches = tab === 'ranch' && data && scoped.length === 0
   return <section id="reportes" ref={ref} className="obs-section reports" aria-labelledby="reports-title">
     <div className="obs-section-heading">
       <div><span>REPORTES Y EXPORTACIÓN</span><h2 id="reports-title">Reportes y exportación</h2><p className="section-lead">Tablas consolidadas con los mismos criterios del observatorio. Descarga CSV compatible con Excel en español.</p></div>
@@ -124,21 +169,25 @@ export default function Reports({ token, geography, months, start, end, onLogin,
       </div>
       <div className="reports-filters" aria-label="Filtros del reporte">
         <div className="rep-field"><label htmlFor="rep-from">Desde (reporte)</label><input id="rep-from" type="date" min={start} max={end} value={filters.from} onChange={e => update('from', e.target.value)} /></div>
-        <div className="rep-field"><label htmlFor="rep-to">Hasta (reporte)</label><input id="rep-to" type="date" min={start} max={end} value={filters.to} onChange={e => update('to', e.target.value)} /></div>
+        <div className="rep-field"><label htmlFor="rep-to">Hasta (reporte)</label><input id="rep-to" type="date" min={start} max={end} value={filters.to || end} onChange={e => update('to', e.target.value === end ? '' : e.target.value)} /></div>
         <div className="rep-field"><label htmlFor="rep-month">Mes (reporte)</label><select id="rep-month" value={filters.month} onChange={e => update('month', e.target.value)}><option value="">Todo el periodo</option>{months.map(m => <option key={m} value={m}>{m}</option>)}</select></div>
         <div className="rep-field"><label htmlFor="rep-region">Región (reporte)</label><select id="rep-region" value={filters.region} onChange={e => update('region', e.target.value)}><option value="">Todas las regiones</option>{regions.map(r => <option key={r.code} value={r.code}>{r.name}</option>)}</select></div>
-        <div className="rep-field"><label htmlFor="rep-municipality">Municipio (reporte)</label><select id="rep-municipality" value={filters.municipality} onChange={e => update('municipality', e.target.value)}><option value="">Todos los municipios</option>{municipalityOptions.map(m => <option key={m.code} value={m.code}>{m.name}</option>)}</select></div>
+        <div className="rep-field"><label htmlFor="rep-municipality">Municipio (reporte)</label><select id="rep-municipality" value={filters.municipality} onChange={e => update('municipality', e.target.value)}><option value="">{filters.region ? `Todos los de ${regionName}` : 'Todos los municipios'}</option>{regionOptions.map(m => <option key={m.code} value={m.code}>{m.name}</option>)}</select></div>
         <div className="reports-filter-actions">
           {observatoryFilters && <button type="button" className="ghost" onClick={fromObservatory}>Usar filtros del observatorio</button>}
-          <button type="button" className="ghost" onClick={() => setFilters(reportDefaults(start, end))}><RotateCcw size={14} aria-hidden="true" />Restablecer</button>
+          <button type="button" className="ghost" onClick={() => setFilters(reportDefaults(start))}><RotateCcw size={14} aria-hidden="true" />Restablecer</button>
         </div>
+      </div>
+      <div className="reports-active" aria-label="Filtros activos del reporte">
+        <span className="reports-active-label">Ámbito: <strong data-scope>{scopeLabel}</strong></span>
+        {activeFilters.map(([key, label]) => <button key={key} type="button" className="obs-chip" onClick={() => update(key, '')} aria-label={`Quitar filtro ${label}`}>{label}<X size={12} aria-hidden="true" /></button>)}
       </div>
 
       <div id="report-panel" role="tabpanel" aria-labelledby={tab === 'municipal' ? 'tab-municipal' : 'tab-ranch'} className="reports-body" aria-busy={report.busy}>
         {locked ? <div className="reports-locked"><Lock size={28} aria-hidden="true" /><div><strong>Reporte privado por rancho</strong><p>Disponible solo para propietarios y veterinarios asignados. Los permisos se verifican en el servidor; el reporte público nunca muestra nombres de ranchos, propietarios ni coordenadas.</p>{onLogin && <button type="button" className="primary" onClick={onLogin}>Iniciar sesión para consultar</button>}</div></div> : <>
           <div className="reports-toolbar">
             <div className="reports-summary" aria-live="polite">
-              {report.busy && !data ? <span className="reports-chip loading">Cargando reporte…</span> : data ? <><span className="reports-chip"><FileSpreadsheet size={14} aria-hidden="true" />{rows.length} {tab === 'municipal' ? 'filas' : rows.length === 1 ? 'rancho' : 'ranchos'}</span><span className="reports-chip subtle">{data.from} a {data.to}</span>{report.busy && <span className="reports-chip loading">Actualizando…</span>}</> : null}
+              {report.busy && !data ? <span className="reports-chip loading">Cargando reporte…</span> : data ? <><span className="reports-chip" data-rows={rows.length}><FileSpreadsheet size={14} aria-hidden="true" />{rows.length} {tab === 'municipal' ? (rows.length === 1 ? 'fila' : 'filas') : rows.length === 1 ? 'rancho' : 'ranchos'}</span><span className="reports-chip subtle">{data.from} a {data.to}</span>{report.busy && <span className="reports-chip loading">Actualizando…</span>}</> : null}
             </div>
             <div className="reports-actions">
               {tab === 'municipal' && <label className="toggle"><input type="checkbox" checked={onlyActive} onChange={e => setOnlyActive(e.target.checked)} /><span>Solo municipios con registros</span></label>}
@@ -152,18 +201,18 @@ export default function Reports({ token, geography, months, start, end, onLogin,
             <div className={'reports-table-wrap' + (report.busy ? ' is-busy' : '')} tabIndex={0} role="region" aria-label={tab === 'municipal' ? 'Tabla del reporte municipal' : 'Tabla del reporte por rancho'}>
               <table className="reports-table">
                 <thead><tr>
-                  {tab === 'municipal' ? <><SortHeader column={{ key: 'name', label: 'Municipio' }} sort={sort} setSort={setSort} /><th scope="col">Región declarada</th></> : <><SortHeader column={{ key: 'ranch_name', label: 'Rancho' }} sort={sort} setSort={setSort} /><th scope="col">Municipio</th></>}
+                  {tab === 'municipal' ? <><SortHeader column={{ key: 'name', label: 'Municipio' }} sort={sort} setSort={setSort} /><th scope="col">Región</th></> : <><SortHeader column={{ key: 'ranch_name', label: 'Rancho' }} sort={sort} setSort={setSort} /><th scope="col">Municipio</th></>}
                   {metrics.map(m => <SortHeader key={m.key} column={m} sort={sort} setSort={setSort} numeric />)}
                   {tab === 'ranch' && <SortHeader column={{ key: 'last_evaluation_at', label: 'Última evaluación' }} sort={sort} setSort={setSort} />}
                 </tr></thead>
                 <tbody>{rows.map(row => tab === 'municipal'
-                  ? <tr key={row.code} className={num(row.evaluations) || num(row.registered_ranches) ? '' : 'is-zero'}><th scope="row">{row.name}{row.code === 'UNLOCATED' && <small>Ranchos sin municipio verificado</small>}</th><td className="muted">{regionNames(row.regions, regions) || '—'}</td>{metrics.map(m => <td key={m.key} className={`num g-${m.group}${num(row[m.key]) ? '' : ' zero'}`}>{fmt(row[m.key])}</td>)}</tr>
+                  ? <tr key={row.code} data-code={row.code} className={num(row.evaluations) || num(row.registered_ranches) ? '' : 'is-zero'}><th scope="row">{row.name}{row.code === 'UNLOCATED' && <small>Ranchos sin municipio verificado</small>}{row.membership && row.membership !== 'official' && <small>{MEMBERSHIP_LABEL[row.membership]}</small>}</th><td className="muted nowrap">{officialRegionName(row.code, regions) || '—'}{row.regions?.length ? <small>Declarada: {regionNames(row.regions, regions)}</small> : null}</td>{metrics.map(m => <td key={m.key} className={`num g-${m.group}${num(row[m.key]) ? '' : ' zero'}`}>{fmt(row[m.key])}</td>)}</tr>
                   : <tr key={row.ranch_id} className={num(row.evaluations) ? '' : 'is-zero'}><th scope="row">{row.ranch_name}<small>{ACCESS[row.access]}{row.region ? ` · ${regionNames([row.region], regions)}` : ''}</small></th><td className="muted">{row.municipality_name}</td>{metrics.map(m => <td key={m.key} className={`num g-${m.group}${num(row[m.key]) ? '' : ' zero'}`}>{fmt(row[m.key])}</td>)}<td className="muted nowrap">{row.last_evaluation_at ? mexicoDate(row.last_evaluation_at) : <span className="no-eval">Sin evaluaciones</span>}</td></tr>)}
                 </tbody>
-                <tfoot><tr><th scope="row">{tab === 'municipal' ? 'Total Guerrero' : 'Total autorizado'}</th><td className="muted">{tab === 'municipal' ? `${fmt(totals?.registered_ranches)} ranchos` : ''}</td>{metrics.map(m => <td key={m.key} className="num" data-total={m.key}>{fmt(totals?.[m.key])}</td>)}{tab === 'ranch' && <td />}</tr></tfoot>
+                <tfoot><tr><th scope="row" data-total-label>{totalLabel}</th><td className="muted">{tab === 'municipal' ? `${fmt(totals.registered_ranches)} ranchos` : ''}</td>{metrics.map(m => <td key={m.key} className="num" data-total={m.key}>{fmt(totals[m.key])}</td>)}{tab === 'ranch' && <td />}</tr></tfoot>
               </table>
             </div>)}
-          <p className="reports-note"><Info size={14} aria-hidden="true" /><span><strong>Bovinos evaluados</strong> cuenta animales únicos; <strong>evaluaciones</strong> cuenta fotografías analizadas. Una predicción de IA compatible con miasis no constituye un diagnóstico confirmado. Ranchos y bovinos registrados corresponden a registros activos; los registros de prueba están excluidos.</span></p>
+          <p className="reports-note"><Info size={14} aria-hidden="true" /><span><strong>Bovinos evaluados</strong> cuenta animales únicos; <strong>evaluaciones</strong> cuenta fotografías analizadas. Una predicción de IA compatible con miasis no constituye un diagnóstico confirmado. Ranchos y bovinos registrados corresponden a registros activos; los registros de prueba están excluidos.{filters.region ? ` Regiones: ${REGION_SOURCE} Sierra se delimita por localidades; fuera de General Heliodoro Castillo y Leonardo Bravo solo cuentan los ranchos que declararon esa región.` : ''}</span></p>
         </>}
       </div>
     </div>

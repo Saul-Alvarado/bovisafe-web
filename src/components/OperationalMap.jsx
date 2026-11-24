@@ -137,38 +137,93 @@ function markerHtml(p,tone,municipal){
 }
 
 /** One cluster group per view mode; data refreshes swap markers without recreating the group (no flicker). */
-function RanchMarkers({features,state,onSelect,selected,municipal}){
- const map=useMap(),groupRef=useRef(null),selectedRef=useRef(selected),selectRef=useRef(onSelect)
+function inventoryHtml(p){
+ return `<div class="livestock-house">${svg('farm')}<i class="aggregate-symbol">M</i></div><i class="livestock-point"></i><div class="livestock-count">${svg('cow')}<strong>${number(p.registered_animals)}</strong></div>`
+}
+/** What one marker shows; markers are only touched when this changes. */
+function markerView(f,variant,municipal){
+ const p=f.properties
+ if(variant==='inventory'){
+  const name=`Inventario municipal: ${p.municipality_name}`
+  return {tone:'inventory',kind:'inventory',name,html:inventoryHtml(p),tooltip:`<strong>${escapeHtml(p.municipality_name)}</strong><span>${number(p.ranches)} ${amount(p.ranches)===1?'rancho registrado':'ranchos registrados'} sin evaluaciones en el periodo · ${number(p.registered_animals)} bovinos registrados</span>`}
+ }
+ const tone=surveillanceTone(p),name=municipal?`Agregado municipal: ${p.municipality_name}`:p.ranch_name
+ return {tone,kind:municipal?'municipality':'ranch',name,html:markerHtml(p,tone,municipal),tooltip:`<strong>${escapeHtml(municipal?p.municipality_name:p.ranch_name)}</strong><span>${number(p.registered_animals)} bovinos registrados · ${number(p.evaluations)} evaluaciones</span>`}
+}
+const pinIcon=(view,selected)=>L.divIcon({className:`operational-marker livestock-pin tone-${view.tone}${selected?' pin-selected':''}`,iconSize:[104,96],iconAnchor:[52,50],html:view.html})
+
+/**
+ * Leaflet.markercluster builds its grid from Math.floor(minZoom) but starts rendering from the raw minZoom.
+ * Guerrero's fitted minimum zoom is fractional (e.g. 8.25), so the top level (7) was skipped and every
+ * isolated marker attached to it (a municipality with no other evaluated neighbour, such as Ometepec)
+ * was never drawn. Our groups use a cluster class that floors that start level, as the library does elsewhere.
+ */
+const integerZoomClusters=new Map()
+function withIntegerMinZoom(group){
+ const Base=group._markerCluster
+ if(!integerZoomClusters.has(Base))integerZoomClusters.set(Base,Base.extend({_recursively(bounds,start,stop,everyLevel,bottomLevel){return Base.prototype._recursively.call(this,bounds,Math.floor(start),stop,everyLevel,bottomLevel)}}))
+ group._markerCluster=integerZoomClusters.get(Base)
+ return group
+}
+
+/**
+ * One persistent cluster group per layer. Refreshes are diffed by feature id: existing markers keep
+ * their DOM element and only change icon, counts or position; new ones are added and vanished ones
+ * removed, so a data update never empties the map or duplicates a marker.
+ */
+function RanchMarkers({features,state,onSelect,selected,municipal,variant='surveillance'}){
+ const map=useMap(),groupRef=useRef(null),markersRef=useRef(new Map()),selectedRef=useRef(selected),selectRef=useRef(onSelect)
  selectedRef.current=selected;selectRef.current=onSelect
  const signature=useMemo(()=>JSON.stringify(features.map(f=>[f.id,f.geometry?.coordinates,f.properties])),[features])
  const featuresRef=useRef(features);featuresRef.current=features
  useEffect(()=>{
+  const inventory=variant==='inventory'
   const group=L.markerClusterGroup({maxClusterRadius:zoom=>zoom>=11?44:62,showCoverageOnHover:false,spiderfyOnMaxZoom:true,removeOutsideVisibleBounds:true,animate:!reducedMotion(),chunkedLoading:true,iconCreateFunction:cluster=>{
-   const children=cluster.getAllChildMarkers(),p={};for(const marker of children){const row=marker.options.record;for(const key of ['confirmed_cases','suspected_cases','nws_predictions','registered_animals'])p[key]=(p[key]||0)+amount(row[key])}
-   const tone=surveillanceTone(p),size=children.length>=20?64:children.length>=6?58:52
-   return L.divIcon({className:`bovine-cluster marker-cluster tone-${tone}`,html:`<div style="--size:${size}px"><span class="cluster-core">${svg('farm')}<strong>${children.length}</strong><small>${municipal?'municipios':'ranchos'}</small></span><span class="cluster-herd">${svg('cow')}<b>${number(p.registered_animals)}</b></span></div>`,iconSize:[size+16,size+26],iconAnchor:[(size+16)/2,(size+16)/2]})
+   const children=cluster.getAllChildMarkers(),p={}
+   // markercluster shows its top level when the map's minimum zoom drops after creation; an empty group must stay invisible.
+   if(!children.length)return L.divIcon({className:'cluster-empty',html:'',iconSize:[0,0]})
+   for(const marker of children){const row=marker.options.record;for(const key of ['confirmed_cases','suspected_cases','nws_predictions','registered_animals','evaluations','ranches'])p[key]=(p[key]||0)+amount(row[key])}
+   const tone=inventory?'inventory':surveillanceTone(p),size=children.length>=20?64:children.length>=6?58:52
+   const unit=inventory?'sin evaluar':municipal?'municipios':'ranchos'
+   const title=inventory?`${children.length} municipios con ${number(p.ranches)} ranchos registrados sin evaluaciones · ${number(p.registered_animals)} bovinos registrados`:`${children.length} ${municipal?'municipios':'ranchos'} · ${number(p.evaluations)} evaluaciones · ${number(p.registered_animals)} bovinos registrados`
+   return L.divIcon({className:`bovine-cluster marker-cluster tone-${tone}`,html:`<div style="--size:${size}px" title="${escapeHtml(title)}" data-evaluations="${p.evaluations}"><span class="cluster-core">${svg('farm')}<strong>${children.length}</strong><small>${unit}</small></span><span class="cluster-herd">${svg('cow')}<b>${number(p.registered_animals)}</b></span></div>`,iconSize:[size+16,size+26],iconAnchor:[(size+16)/2,(size+16)/2]})
   }})
   const apply=()=>group.eachLayer(layer=>layer.getElement?.()?.classList.toggle('pin-selected',String(layer.options.featureId)===String(selectedRef.current)))
   group.on('animationend spiderfied',apply);map.on('zoomend',apply)
-  map.addLayer(group);groupRef.current=group
-  return()=>{map.off('zoomend',apply);group.eachLayer(layer=>{layer.unbindTooltip();layer.off()});group.clearLayers();group.off();map.removeLayer(group);groupRef.current=null}
- },[map,municipal])
+  withIntegerMinZoom(group);map.addLayer(group);groupRef.current=group
+  return()=>{map.off('zoomend',apply);group.eachLayer(layer=>{layer.unbindTooltip();layer.off()});group.clearLayers();group.off();map.removeLayer(group);groupRef.current=null;markersRef.current=new Map()}
+ },[map,municipal,variant])
  useEffect(()=>{
   const group=groupRef.current;if(!group)return
-  group.eachLayer(layer=>{layer.unbindTooltip();layer.off()});group.clearLayers()
-  const markers=[]
+  const previous=markersRef.current,next=new Map(),added=[],changed=[]
   for(const f of featuresRef.current){
    if(f.geometry?.type!=='Point'||!booleanPointInPolygon(f.geometry.coordinates,state.features[0]))continue
-   const p=f.properties,tone=surveillanceTone(p),kind=municipal?'municipality':'ranch',name=municipal?`Agregado municipal: ${p.municipality_name}`:p.ranch_name
-   const marker=L.marker([f.geometry.coordinates[1],f.geometry.coordinates[0]],{record:p,featureId:f.id,title:name,alt:name,keyboard:true,riseOnHover:true,
-    icon:L.divIcon({className:`operational-marker livestock-pin tone-${tone}${String(selectedRef.current)===String(f.id)?' pin-selected':''}`,iconSize:[104,96],iconAnchor:[52,50],html:markerHtml(p,tone,municipal)})})
-   marker.on('click',()=>selectRef.current({...p,id:f.id,kind}))
-   marker.bindTooltip(`<strong>${escapeHtml(municipal?p.municipality_name:p.ranch_name)}</strong><span>${number(p.registered_animals)} bovinos registrados · ${number(p.evaluations)} evaluaciones</span>`,{direction:'top',offset:[0,-46],className:'livestock-tooltip'})
-   markers.push(marker)
+   const id=String(f.id),view=markerView(f,variant,municipal),latLng=[f.geometry.coordinates[1],f.geometry.coordinates[0]]
+   const key=JSON.stringify([latLng,view.html,view.tooltip,view.tone]),record={...f.properties,id:f.id,kind:view.kind}
+   const entry=previous.get(id)
+   if(entry){
+    previous.delete(id);entry.marker.options.record=record
+    if(entry.key!==key){
+     const position=entry.marker.getLatLng();if(position.lat!==latLng[0]||position.lng!==latLng[1])entry.marker.setLatLng(latLng)
+     entry.marker.setIcon(pinIcon(view,String(selectedRef.current)===id));entry.marker.setTooltipContent(view.tooltip)
+     entry.marker.options.title=view.name;entry.marker.options.alt=view.name;entry.marker.getElement?.()?.setAttribute('title',view.name)
+     changed.push(entry.marker)
+    }
+    next.set(id,{marker:entry.marker,key})
+   }else{
+    const marker=L.marker(latLng,{record,featureId:f.id,title:view.name,alt:view.name,keyboard:true,riseOnHover:true,zIndexOffset:variant==='inventory'?-400:0,icon:pinIcon(view,String(selectedRef.current)===id)})
+    marker.on('click',()=>selectRef.current(marker.options.record))
+    marker.bindTooltip(view.tooltip,{direction:'top',offset:[0,-46],className:'livestock-tooltip'})
+    added.push(marker);next.set(id,{marker,key})
+   }
   }
-  group.addLayers(markers)
+  const removed=[...previous.values()].map(entry=>entry.marker)
+  if(removed.length){removed.forEach(marker=>{marker.unbindTooltip();marker.off()});group.removeLayers(removed)}
+  if(added.length)group.addLayers(added)
+  if(changed.length)group.refreshClusters(changed)
+  markersRef.current=next
  // eslint-disable-next-line react-hooks/exhaustive-deps
- },[signature,state,municipal])
+ },[signature,state,municipal,variant])
  useEffect(()=>{groupRef.current?.eachLayer(layer=>layer.getElement?.()?.classList.toggle('pin-selected',String(layer.options.featureId)===String(selected)))},[selected])
  return null
 }
@@ -193,6 +248,14 @@ function DetailPanel({record,selectedMunicipality,geography,snapshot,authorized,
  const municipality=geography.municipalities.features.find(f=>f.properties.code===selectedMunicipality)
  const row=record||(municipality?{...snapshot?.municipalities?.find(m=>m.code===selectedMunicipality),municipality_name:municipality.properties.name,kind:'municipality'}:null)
  if(!row)return <Overview snapshot={snapshot} authorized={authorized} onMunicipality={onMunicipality}/>
+ if(row.kind==='inventory')return <aside className="territory-panel detail-panel tone-inventory" aria-label="Inventario sin evaluaciones">
+  <div className="panel-head"><span className="territory-eyebrow">INVENTARIO SIN EVALUACIONES</span><button type="button" className="panel-close" aria-label="Cerrar detalle" onClick={onClose}><Icon name="close"/></button></div>
+  <div className="panel-title"><div className="panel-title-icon tone-inventory"><Icon name="farm"/></div><div><h3>{row.municipality_name}</h3><p className="panel-location"><Icon name="location"/>Guerrero · referencia municipal</p></div></div>
+  <div className="surveillance-status tone-inventory"><Icon name="farm"/>Ranchos registrados sin evaluaciones en el periodo</div>
+  <div className="registered-herd"><Icon name="cow"/><strong>{number(row.registered_animals)}</strong><span>bovinos registrados</span></div>
+  <dl className="territory-case-list"><div><dt>{authorized?'Ranchos autorizados sin evaluar':'Ranchos registrados sin evaluar'}</dt><dd>{number(row.ranches)}</dd></div><div><dt>Evaluaciones sanitarias del periodo</dt><dd>0</dd></div></dl>
+  <p className="territory-note">Inventario activo registrado desde Android, separado de las evaluaciones del periodo. El símbolo es un punto representativo del municipio INEGI; no indica la ubicación de ningún rancho.</p>
+ </aside>
  const tone=surveillanceTone(row),ranch=row.kind==='ranch'
  return <aside className={'territory-panel detail-panel tone-'+tone} aria-label={ranch?'Detalle del rancho':'Detalle municipal'}>
   <div className="panel-head"><span className="territory-eyebrow">{ranch?'RANCHO AUTORIZADO':'AGREGADO MUNICIPAL'}</span><button type="button" className="panel-close" aria-label="Cerrar detalle" onClick={onClose}><Icon name="close"/></button></div>
@@ -209,23 +272,49 @@ function DetailPanel({record,selectedMunicipality,geography,snapshot,authorized,
  </aside>
 }
 
-export default function OperationalMap({geography,snapshot,selectedMunicipality,onMunicipality,authorized=false,busy=false,onHistory}){
+/** Municipal inventory: registered ranches with no valid evaluation in the period, never a ranch location. */
+function inventoryRows(inventory){
+ if(!inventory?.rows)return []
+ if(inventory.kind==='public')return inventory.rows.filter(row=>row.code!=='UNLOCATED'&&amount(row.registered_ranches)>0&&amount(row.evaluations)===0).map(row=>({code:row.code,name:row.name,ranches:amount(row.registered_ranches),registered_animals:amount(row.registered_animals)}))
+ const byMunicipality=new Map()
+ for(const row of inventory.rows){
+  if(!row.municipality_code||amount(row.evaluations)>0||row.active===false)continue
+  const entry=byMunicipality.get(row.municipality_code)||{code:row.municipality_code,name:row.municipality_name,ranches:0,registered_animals:0}
+  entry.ranches++;entry.registered_animals+=amount(row.registered_animals);byMunicipality.set(row.municipality_code,entry)
+ }
+ return [...byMunicipality.values()]
+}
+
+export default function OperationalMap({geography,snapshot,inventory,selectedMunicipality,onMunicipality,authorized=false,busy=false,onHistory}){
  const mapSnapshot=snapshot?.territorial||snapshot
  const [map,setMap]=useState(null),[zoom,setZoom]=useState(7),[selected,setSelected]=useState(null),[tilesUnavailable,setTilesUnavailable]=useState(false),[streets,setStreets]=useState(true)
  const geo=geography?.state,municipalities=geography?.municipalities
  const bounds=useMemo(()=>geo?L.geoJSON(geo).getBounds():null,[geo])
+ const anchors=useMemo(()=>{const cache=new Map();return code=>{if(!cache.has(code)){const polygon=municipalities?.features.find(f=>f.properties.code===code);cache.set(code,polygon?pointOnFeature(polygon).geometry:null)}return cache.get(code)}},[municipalities])
  const features=useMemo(()=>{
   if(authorized)return mapSnapshot?.map?.features||[]
   if(!municipalities||!mapSnapshot)return []
   const minimum=Math.max(1,Number(mapSnapshot.publicMarkerMinimumRanches)||1)
-  return (mapSnapshot.municipalities||[]).filter(row=>amount(row.ranches)>=minimum&&amount(row.evaluations)>0).flatMap(row=>{
-   const polygon=municipalities.features.find(f=>f.properties.code===row.code);if(!polygon)return []
-   return [{type:'Feature',id:row.code,geometry:pointOnFeature(polygon).geometry,properties:{...row,municipality:row.code,municipality_name:row.name}}]
+  return (mapSnapshot.municipalities||[]).filter(row=>row.code!=='UNLOCATED'&&amount(row.ranches)>=minimum&&amount(row.evaluations)>0).flatMap(row=>{
+   const geometry=anchors(row.code);if(!geometry)return []
+   return [{type:'Feature',id:row.code,geometry,properties:{...row,municipality:row.code,municipality_name:row.name}}]
   })
- },[authorized,mapSnapshot,municipalities])
+ },[authorized,mapSnapshot,municipalities,anchors])
+ const inventoryFeatures=useMemo(()=>{
+  if(!municipalities)return []
+  return inventoryRows(inventory).flatMap(row=>{const geometry=anchors(row.code);return geometry?[{type:'Feature',id:`inv-${row.code}`,geometry,properties:{...row,municipality:row.code,municipality_name:row.name}}]:[]})
+ },[inventory,municipalities,anchors])
  const totals=useMemo(()=>new Map((mapSnapshot?.municipalities||[]).map(row=>[row.code,row])),[mapSnapshot])
- useEffect(()=>setSelected(null),[snapshot,selectedMunicipality])
- const handlers=useRef({});handlers.current={select:record=>setSelected(record),municipality:code=>onMunicipality(code)}
+ // Only an explicit municipal choice clears the marker selection; automatic refreshes keep it.
+ useEffect(()=>setSelected(null),[selectedMunicipality])
+ // The open detail always reads the freshest counts for the selected id; it closes only if the record is gone.
+ const record=useMemo(()=>{
+  if(!selected)return null
+  const feature=[...features,...inventoryFeatures].find(f=>String(f.id)===String(selected.id))
+  if(!feature)return null
+  return {...feature.properties,id:feature.id,kind:selected.kind}
+ },[selected,features,inventoryFeatures])
+ const handlers=useRef({});handlers.current={select:record=>setSelected({id:record.id,kind:record.kind}),municipality:code=>onMunicipality(code)}
  const [selectMarker]=useState(()=>record=>handlers.current.select(record))
  const [selectMunicipality]=useState(()=>code=>handlers.current.municipality(code))
  if(!geo||!municipalities||!bounds)return <div className="map-placeholder" role="status"><span className="map-placeholder-pulse"/>Cargando cartografía oficial de Guerrero…</div>
@@ -242,18 +331,19 @@ export default function OperationalMap({geography,snapshot,selectedMunicipality,
      <MunicipalityLayer municipalities={municipalities} totals={totals} selected={selectedMunicipality} zoom={proximity?10:7} onSelect={selectMunicipality}/>
      <StateMask state={geo}/>
      <StateOutline state={geo}/>
-     <RanchMarkers features={features} state={geo} onSelect={selectMarker} selected={selected?.id} municipal={!authorized}/>
+     <RanchMarkers features={inventoryFeatures} state={geo} onSelect={selectMarker} selected={record?.id} municipal variant="inventory"/>
+     <RanchMarkers features={features} state={geo} onSelect={selectMarker} selected={record?.id} municipal={!authorized}/>
     </MapContainer>
     <span className="territory-level"><Icon name={authorized?'farm':'shield'}/>{authorized?'Ranchos autorizados':'Agregados municipales'}</span>
     {busy&&<span className="map-loading" role="status"><i/>Consultando registros…</span>}
     <div className="territory-compass" aria-hidden="true">N<span>↑</span></div>
    </div>
-   <DetailPanel record={selected} selectedMunicipality={selectedMunicipality} geography={geography} snapshot={mapSnapshot} authorized={authorized} onHistory={onHistory} onMunicipality={selectMunicipality} onClose={()=>{if(selected)setSelected(null);else if(selectedMunicipality)onMunicipality(selectedMunicipality)}}/>
+   <DetailPanel record={record} selectedMunicipality={selectedMunicipality} geography={geography} snapshot={mapSnapshot} authorized={authorized} onHistory={onHistory} onMunicipality={selectMunicipality} onClose={()=>{if(record)setSelected(null);else if(selectedMunicipality)onMunicipality(selectedMunicipality)}}/>
   </div>
-  <div className="territory-legend" aria-label="Simbología de vigilancia"><span className="legend-title">Simbología</span><span><Icon name="farm"/>{authorized?'Rancho':'Agregado municipal'}</span><span><Icon name="cow"/>Bovinos registrados</span><span className="tone-visual"><i className="legend-swatch"/>Compatibilidad visual (IA)</span><span className="tone-suspected"><i className="legend-swatch"/>Sospecha profesional</span><span className="tone-confirmed"><i className="legend-swatch"/>Diagnóstico confirmado</span><span className="tone-registered"><i className="legend-swatch"/>Con evaluaciones, sin alertas</span><span><i className="empty-area"/>Sin evaluaciones</span></div>
+  <div className="territory-legend" aria-label="Simbología de vigilancia"><span className="legend-title">Simbología</span><span><Icon name="farm"/>{authorized?'Rancho':'Agregado municipal'}</span><span><Icon name="cow"/>Bovinos registrados</span><span className="tone-visual"><i className="legend-swatch"/>Compatibilidad visual (IA)</span><span className="tone-suspected"><i className="legend-swatch"/>Sospecha profesional</span><span className="tone-confirmed"><i className="legend-swatch"/>Diagnóstico confirmado</span><span className="tone-registered"><i className="legend-swatch"/>Con evaluaciones, sin alertas</span><span className="tone-inventory"><i className="legend-swatch"/>Ranchos registrados sin evaluaciones</span><span><i className="empty-area"/>Sin evaluaciones</span></div>
   {tilesUnavailable&&<p className="tile-status" role="status">Algunas calles no pudieron cargarse. Los límites oficiales y los registros siguen disponibles.</p>}
-  {!busy&&snapshot&&amount(summary?.evaluations)===0&&<div className="map-empty" role="status"><Icon name="farm"/><div><strong>Actualmente no hay evaluaciones registradas para el periodo seleccionado.</strong><span>Los ranchos y las alertas aparecerán cuando existan evaluaciones sanitarias válidas y ubicaciones autorizadas.</span></div></div>}
-  {authorized&&amount(snapshot?.unlocatedRanches)>0&&<p className="territory-unlocated">{snapshot.unlocatedRanches} ranchos evaluados sin coordenadas válidas dentro de Guerrero. No se les asigna una ubicación aproximada.</p>}
+  {!busy&&snapshot&&amount(summary?.evaluations)===0&&inventoryFeatures.length===0&&<div className="map-empty" role="status"><Icon name="farm"/><div><strong>Actualmente no hay evaluaciones registradas para el periodo seleccionado.</strong><span>Los ranchos y las alertas aparecerán cuando existan evaluaciones sanitarias válidas y ubicaciones autorizadas.</span></div></div>}
+  {authorized&&amount(snapshot?.unlocatedRanches)>0&&<p className="territory-unlocated">{snapshot.unlocatedRanches} ranchos evaluados sin coordenadas válidas dentro de Guerrero: sus evaluaciones sí se cuentan en los indicadores, pero no se les asigna una ubicación aproximada. Registra la ubicación del rancho en Android para verlo en el mapa.</p>}
   <details className="territory-method"><summary>Cómo leer los símbolos y las cantidades</summary><p>El color del municipio y del marcador indica el estado más relevante registrado en el periodo: ámbar para predicciones del modelo compatibles con miasis, naranja para sospecha profesional y rojo para diagnóstico veterinario confirmado. Describen registros, no zonas de infestación ni prevalencia.</p><p>La cifra con la vaca indica bovinos registrados en los ranchos representados. Al acercarte aparecen los grupos de bovinos únicos por estado; un mismo bovino puede estar en varios estados y esas cifras no deben sumarse. Las agrupaciones cuentan ranchos o municipios, nunca posiciones individuales de bovinos.</p><p>Los agregados públicos se ubican en un punto representativo calculado con point-on-feature sobre el municipio INEGI; no es una ubicación de rancho. No se dibujan límites regionales sin una fuente verificada.</p></details>
   <p className="map-attribution"><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap contributors</a> · Marco Geoestadístico INEGI · 85 municipios</p>
  </div>

@@ -1,6 +1,7 @@
 // Column definitions shared by the on-screen tables and the CSV export.
 // "Bovinos evaluados" counts unique animals; "Evaluaciones" counts photographs analysed.
 // An AI prediction compatible with myiasis is never a confirmed diagnosis.
+import { officialRegion, MEMBERSHIP_LABEL } from '../territory/regions.js'
 
 export const num = value => Math.max(0, Number(value) || 0)
 
@@ -39,11 +40,16 @@ export const RANCH_METRICS = [
   { key: 'follow_up_animals', label: 'Bovinos en seguimiento', short: 'Seguimiento', group: 'follow' },
 ]
 
-export function municipalColumns(regions) {
+/** Region the whole municipality belongs to in the official catalog (empty when none is published). */
+export const officialRegionName = (code, regions) => { const region = officialRegion(code); return region ? regionNames([region], regions) : '' }
+
+export function municipalColumns(regions, withMembership = false) {
   return [
     { key: 'code', label: 'Clave INEGI' },
     { key: 'name', label: 'Municipio' },
-    { key: 'regions', label: 'Región declarada', value: row => regionNames(row.regions, regions) },
+    { key: 'official_region', label: 'Región (catálogo oficial)', value: row => officialRegionName(row.code, regions) },
+    { key: 'regions', label: 'Región declarada por ranchos', value: row => regionNames(row.regions, regions) },
+    ...(withMembership ? [{ key: 'membership', label: 'Pertenencia a la región filtrada', value: row => MEMBERSHIP_LABEL[row.membership] || '' }] : []),
     ...MUNICIPAL_METRICS.map(m => ({ key: m.key, label: m.label, value: row => num(row[m.key]) })),
   ]
 }

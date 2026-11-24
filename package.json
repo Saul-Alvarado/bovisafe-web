@@ -9,7 +9,7 @@
     "preview": "vite preview --host 0.0.0.0",
     "test": "playwright test",
     "test:config": "node --test tests/runtime-config.test.js",
-    "test:unit": "node --test tests/csv.test.js tests/runtime-config.test.js"
+    "test:unit": "node --test tests/csv.test.js tests/runtime-config.test.js tests/regions.test.js"
   },
   "dependencies": {
     "@turf/boolean-point-in-polygon": "^7.4.0",

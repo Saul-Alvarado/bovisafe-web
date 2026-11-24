@@ -21,20 +21,21 @@ test('quoting follows RFC 4180 for the selected separator', () => {
 })
 
 test('CSV is UTF-8 with BOM, CRLF, headers, totals and notes', () => {
-  const columns = municipalColumns([{ code: 'CENTRO', name: 'Centro' }])
+  const columns = municipalColumns([{ code: 'CENTRO', name: 'Centro' }, { code: 'MONTANA', name: 'Montaña' }])
   const rows = [
     { code: '12029', name: 'Chilpancingo de los Bravo', regions: ['CENTRO'], registered_ranches: 2, registered_animals: 10, animals: 3, evaluations: 5, nws_animals: 1 },
     { code: '12076', name: 'Acatepec', regions: [], registered_ranches: 0 },
   ]
   const csv = toCsv(columns, rows, { footer: [['TOTAL', 'Total Guerrero', '', 2, 10, 3, 5, 1, 0, 0, 0, 0, 0, 0]], notes: [['Periodo', '2026-11-01 a 2026-11-24']] })
-  assert.ok(csv.startsWith('﻿Clave INEGI,Municipio,Región declarada,Ranchos registrados,Bovinos registrados,Bovinos evaluados (únicos),Evaluaciones sanitarias válidas'))
+  assert.ok(csv.startsWith('﻿Clave INEGI,Municipio,Región (catálogo oficial),Región declarada por ranchos,Ranchos registrados,Bovinos registrados,Bovinos evaluados (únicos),Evaluaciones sanitarias válidas'))
   const lines = csv.slice(1).split('\r\n')
-  assert.equal(lines[1], '12029,Chilpancingo de los Bravo,Centro,2,10,3,5,1,0,0,0,0,0,0')
-  assert.equal(lines[2], '12076,Acatepec,,0,0,0,0,0,0,0,0,0,0,0', 'municipalities without records are zero-filled')
+  assert.equal(lines[1], '12029,Chilpancingo de los Bravo,Centro,Centro,2,10,3,5,1,0,0,0,0,0,0')
+  assert.equal(lines[2], '12076,Acatepec,Montaña,,0,0,0,0,0,0,0,0,0,0,0', 'municipalities without records are zero-filled')
   assert.equal(lines[3].split(',')[1], 'Total Guerrero')
   assert.equal(lines[4], '')
   assert.ok(csv.endsWith('\r\n'))
-  assert.equal(columns.length, 3 + MUNICIPAL_METRICS.length)
+  assert.equal(columns.length, 4 + MUNICIPAL_METRICS.length)
+  assert.equal(municipalColumns([], true).length, 5 + MUNICIPAL_METRICS.length, 'a region filter adds the membership column')
 })
 
 test('ranch report keeps ranches without evaluations and never confuses animals with evaluations', () => {
